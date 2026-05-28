@@ -99,8 +99,17 @@ for _, row in df.sort_values("activity_number").iterrows():
 
 current_week = get_current_week(start_date)
 if start_date and current_week:
-    fig.add_vline(x=str(date.today()), line_color="#EF4444", line_dash="dash", line_width=2,
-                  annotation_text="Hoy", annotation_font=dict(color="#EF4444", size=11))
+    today_str = str(date.today())
+    fig.add_shape(type="line",
+        x0=today_str, x1=today_str, y0=0, y1=1,
+        xref="x", yref="paper",
+        line=dict(color="#EF4444", width=2, dash="dash"),
+    )
+    fig.add_annotation(
+        x=today_str, y=1.02, xref="x", yref="paper",
+        text="Hoy", showarrow=False,
+        font=dict(color="#EF4444", size=11),
+    )
 
 if start_date:
     tick_dates = [start_date + timedelta(weeks=i) for i in range(13)]
