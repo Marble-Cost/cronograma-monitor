@@ -17,14 +17,40 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
 * { font-family: 'DM Sans', sans-serif !important; }
-#MainMenu, footer, [data-testid="stToolbar"] { visibility: hidden; }
+#MainMenu, footer, [data-testid="stToolbar"], header { visibility: hidden !important; }
 section[data-testid="stSidebar"], [data-testid="collapsedControl"] { display: none !important; }
-.stApp { background: linear-gradient(135deg, #002a52 0%, #003A70 60%, #004d94 100%) !important; }
-.main .block-container { padding: 2rem 1rem !important; max-width: 460px !important; }
-.stTextInput input { border-radius: 8px !important; border: 1.5px solid #E2E8F0 !important; }
-.stTextInput input:focus { border-color: #00B5B0 !important; box-shadow: 0 0 0 3px rgba(0,181,176,0.12) !important; }
-.stFormSubmitButton button { background: #003A70 !important; color: white !important; border: none !important; border-radius: 10px !important; font-weight: 600 !important; font-size: 15px !important; padding: 12px !important; width: 100% !important; }
-.stFormSubmitButton button:hover { background: #00B5B0 !important; }
+
+/* Fondo navy en TODA la página sin franja blanca */
+html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stAppViewBlockContainer"] {
+    background: linear-gradient(135deg, #002a52 0%, #003A70 60%, #004d94 100%) !important;
+}
+.main, .main .block-container {
+    background: transparent !important;
+    padding: 1.5rem 1rem !important;
+    max-width: 460px !important;
+}
+
+/* Labels de inputs en blanco */
+.stTextInput label, .stTextInput p { color: rgba(255,255,255,0.85) !important; font-weight: 500 !important; }
+
+/* Inputs */
+.stTextInput input {
+    border-radius: 8px !important;
+    border: 1.5px solid rgba(255,255,255,0.2) !important;
+    background: rgba(255,255,255,0.95) !important;
+}
+.stTextInput input:focus { border-color: #00B5B0 !important; box-shadow: 0 0 0 3px rgba(0,181,176,0.2) !important; }
+
+/* Botón submit */
+.stFormSubmitButton button {
+    background: #00B5B0 !important; color: white !important;
+    border: none !important; border-radius: 10px !important;
+    font-weight: 700 !important; font-size: 15px !important; padding: 12px !important;
+}
+.stFormSubmitButton button:hover { background: #009990 !important; }
+
+/* Quitar fondo de form */
+[data-testid="stForm"] { background: transparent !important; border: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -36,11 +62,19 @@ def load_logo():
     return None
 
 logo = load_logo()
-if logo:
-    st.markdown(f'<div style="text-align:center;margin-bottom:20px;"><img src="data:image/jpeg;base64,{logo}" width="155"></div>', unsafe_allow_html=True)
 
-st.markdown('<h2 style="text-align:center;color:white;margin-bottom:4px;">Compliance Monitor</h2>', unsafe_allow_html=True)
-st.markdown('<p style="text-align:center;color:rgba(255,255,255,0.6);margin-bottom:24px;font-size:14px;">Ingresa tus credenciales para continuar</p>', unsafe_allow_html=True)
+# Logo sin fondo cuadrado — con border-radius y sin borde
+if logo:
+    st.markdown(
+        f'<div style="text-align:center;margin-bottom:28px;margin-top:20px;">'
+        f'<img src="data:image/jpeg;base64,{logo}" width="140" '
+        f'style="border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.25);">'
+        f'</div>',
+        unsafe_allow_html=True
+    )
+
+st.markdown('<h1 style="text-align:center;color:white;font-size:28px;font-weight:700;margin-bottom:6px;">Compliance Monitor</h1>', unsafe_allow_html=True)
+st.markdown('<p style="text-align:center;color:rgba(255,255,255,0.55);margin-bottom:32px;font-size:14px;">Sofgen Pharma · Ingresa tus credenciales para continuar</p>', unsafe_allow_html=True)
 
 with st.form("login_form"):
     email    = st.text_input("Correo electrónico", placeholder="usuario@sofgen.com")
@@ -59,4 +93,4 @@ if submitted:
         else:
             st.error(f"🔒 Acceso denegado — {err}")
 
-st.markdown('<p style="text-align:center;color:rgba(255,255,255,0.3);font-size:11px;margin-top:20px;">Sofgen Pharma · Cumplimiento Legal · 2026</p>', unsafe_allow_html=True)
+st.markdown('<p style="text-align:center;color:rgba(255,255,255,0.25);font-size:11px;margin-top:24px;">Cumplimiento Legal Corporativo · 2026</p>', unsafe_allow_html=True)
