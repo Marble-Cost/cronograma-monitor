@@ -11,197 +11,230 @@ st.set_page_config(
 from app.auth import require_auth, is_admin
 from app.styles import inject_global_css
 from app.components import render_sidebar, render_page_header, render_no_permission_warning
-from app.database import (
-    get_activities, get_project_config, bulk_update_statuses, get_user_note, save_user_note
-)
-from app.models import STATUSES, RESPONSABLES, FASES, STATUS_BADGE_CSS, RESPONSABLE_COLORS
-from app.utils import activities_to_dataframe
+from app.database import get_activities, get_project_config, update_activity_status, get_recent_log
+from app.models import STATUSES, RESPONSABLES
 
-# ── Auth guard ────────────────────────────────────────────────
 require_auth()
 inject_global_css()
 render_sidebar()
 
-# ── Datos ─────────────────────────────────────────────────────
 config   = get_project_config()
 scenario = config.scenario
 
-activities = get_activities(scenario)
+render_page_header("📋 Cronograma", f"Gestión de actividades · Escenario: {scenario}")
 
-render_page_header(
-    "Cronograma",
-    f"Gestión de actividades · {scenario} · {len(activities)} actividades en 5 fases"
-)
+# ── Guía de uso ───────────────────────────────────────────────
+with st.expander("📖 Guía de uso — ¿Cómo funciona esta sección?", expanded=False):
+    st.markdown("""
+    **Esta sección es el centro de control del proyecto.** Desde aquí puedes ver y actualizar el estado de cada actividad.
+    
+    **Estados de actividad:**
+    - ⚪ **PENDIENTE** — La actividad aún no ha comenzado
+    - 🟡 **EN PROGRESO** — La actividad está siendo ejecutada actualmente
+    - ✅ **COMPLETADO** — La actividad fue finalizada exitosamente
+    
+    **Cómo actualizar una actividad:**
+    1. Localiza la actividad en la tabla (usa los filtros si hay muchas)
+    2. Haz clic en el botón de acción de esa fila:
+       - **▶ Iniciar** → cambia de PENDIENTE a EN PROGRESO
+       - **✅ Completar** → cambia de EN PROGRESO a COMPLETADO
+       - **↩ Reabrir** → devuelve a EN PROGRESO si fue completada por error
+    3. Se abrirá un panel para dejar una observación (opcional pero recomendado)
+    4. Confirma el cambio — quedará guardado permanentemente en la base de datos
+    
+    **Responsables:**
+    - 👨‍💻 **Desarrollador** — Tareas técnicas de implementación
+    - 🖥️ **TI** — Infraestructura y servidores
+    - 🤝 **Ambos** — Coordinación entre Desarrollador y TI
+    - 👔 **Liderazgo** — Aprobaciones y decisiones estratégicas
+    """)
+
+st.markdown("---")
 
 # ── Filtros ───────────────────────────────────────────────────
-st.markdown('<div class="section-title">Filtros</div>', unsafe_allow_html=True)
-
-fcol1, fcol2, fcol3, fcol4 = st.columns(4, gap="medium")
-
-with fcol1:
-    fase_opts = ["Todas las fases"] + [f"FASE {fn} · {fn}" for fn in range(5)]
-    fase_labels = ["Todas las fases"] + [f"FASE {fn}" for fn in range(5)]
-    selected_fase = st.selectbox("Fase", fase_labels, index=0)
-
-with fcol2:
+fc1, fc2, fc3, fc4 = st.columns(4, gap="medium")
+with fc1:
+    fase_opts = ["Todas las fases", "FASE 0", "FASE 1", "FASE 2", "FASE 3", "FASE 4"]
+    sel_fase  = st.selectbox("Filtrar por fase", fase_opts)
+with fc2:
     resp_opts = ["Todos"] + RESPONSABLES
-    selected_resp = st.selectbox("Responsable", resp_opts, index=0)
-
-with fcol3:
+    sel_resp  = st.selectbox("Filtrar por responsable", resp_opts)
+with fc3:
     stat_opts = ["Todos"] + STATUSES
-    selected_stat = st.selectbox("Estado", stat_opts, index=0)
+    sel_stat  = st.selectbox("Filtrar por estado", stat_opts)
+with fc4:
+    buscar = st.text_input("Buscar actividad", placeholder="Escribe para buscar...")
 
-with fcol4:
-    search_text = st.text_input("Buscar actividad", placeholder="Escribe para buscar...")
+# ── Carga y filtrado ──────────────────────────────────────────
+activities = get_activities(scenario)
 
-# ── Aplicar filtros ───────────────────────────────────────────
-filtered = activities
+if sel_fase != "Todas las fases":
+    fn = int(sel_fase.split(" ")[1])
+    activities = [a for a in activities if a.fase_number == fn]
+if sel_resp != "Todos":
+    activities = [a for a in activities if a.responsable == sel_resp]
+if sel_stat != "Todos":
+    activities = [a for a in activities if a.status == sel_stat]
+if buscar:
+    activities = [a for a in activities if buscar.lower() in a.activity_name.lower()]
 
-if selected_fase != "Todas las fases":
-    fn_num = int(selected_fase.split(" ")[1])
-    filtered = [a for a in filtered if a.fase_number == fn_num]
+# Contadores
+n_pend = sum(1 for a in activities if a.status == "PENDIENTE")
+n_prog = sum(1 for a in activities if a.status == "EN PROGRESO")
+n_done = sum(1 for a in activities if a.status == "COMPLETADO")
 
-if selected_resp != "Todos":
-    filtered = [a for a in filtered if a.responsable == selected_resp]
+st.markdown(f"**{len(activities)} actividades** · ⚪ {n_pend} pendientes · 🟡 {n_prog} en progreso · ✅ {n_done} completadas")
+st.markdown("---")
 
-if selected_stat != "Todos":
-    filtered = [a for a in filtered if a.status == selected_stat]
-
-if search_text:
-    filtered = [a for a in filtered if search_text.lower() in a.activity_name.lower()]
-
-# ── Contador de resultados ────────────────────────────────────
-cnt_pend = sum(1 for a in filtered if a.status == "PENDIENTE")
-cnt_prog = sum(1 for a in filtered if a.status == "EN PROGRESO")
-cnt_done = sum(1 for a in filtered if a.status == "COMPLETADO")
-
-st.markdown(f"""
-<div style="display:flex;gap:12px;align-items:center;margin:8px 0 20px 0;flex-wrap:wrap;">
-    <span style="font-size:13px;color:#64748B;">
-        Mostrando <strong style="color:#003A70;">{len(filtered)}</strong> actividades
-    </span>
-    <span class="badge badge-pendiente">⚪ {cnt_pend} pendientes</span>
-    <span class="badge badge-progreso">🟡 {cnt_prog} en progreso</span>
-    <span class="badge badge-completado">✅ {cnt_done} completadas</span>
-</div>
-""", unsafe_allow_html=True)
-
-if not filtered:
-    st.markdown('<div class="info-box">No hay actividades que coincidan con los filtros seleccionados.</div>', unsafe_allow_html=True)
+if not activities:
+    st.info("No hay actividades que coincidan con los filtros.")
     st.stop()
 
-# ── Tabla editable ────────────────────────────────────────────
-st.markdown('<div class="section-title">Actividades</div>', unsafe_allow_html=True)
+# ── Estado de la acción pendiente (modal) ─────────────────────
+if "accion_pendiente" not in st.session_state:
+    st.session_state.accion_pendiente = None
 
-can_edit = is_admin()
-if not can_edit:
-    render_no_permission_warning()
-    st.markdown("<br>", unsafe_allow_html=True)
+# ── Panel de confirmación ─────────────────────────────────────
+if st.session_state.accion_pendiente:
+    ap = st.session_state.accion_pendiente
+    nuevo_estado = {
+        "iniciar":   "EN PROGRESO",
+        "completar": "COMPLETADO",
+        "reabrir":   "EN PROGRESO",
+    }[ap["accion"]]
+    icono = {"iniciar": "▶", "completar": "✅", "reabrir": "↩"}[ap["accion"]]
 
-# Construir DataFrame
-df = activities_to_dataframe(filtered)
-df_display = df[["activity_number", "fase_name", "activity_name", "responsable", "status", "semanas", "notes"]].copy()
-df_display.columns = ["#", "Fase", "Actividad", "Responsable", "Estado", "Semanas", "Notas"]
-
-# Mapear IDs para recuperar después
-id_map = {(row["activity_number"]): row["id"] for _, row in df.iterrows()}
-original_statuses = {row["id"]: row["status"] for _, row in df.iterrows()}
-
-col_config = {
-    "#":           st.column_config.NumberColumn(width="small", disabled=True),
-    "Fase":        st.column_config.TextColumn(width="medium", disabled=True),
-    "Actividad":   st.column_config.TextColumn(width="large", disabled=True),
-    "Responsable": st.column_config.TextColumn(width="small", disabled=True),
-    "Estado":      st.column_config.SelectboxColumn(
-                       width="medium",
-                       options=STATUSES,
-                       required=True,
-                       disabled=not can_edit,
-                   ),
-    "Semanas":     st.column_config.TextColumn(width="small", disabled=True),
-    "Notas":       st.column_config.TextColumn(width="large", disabled=True),
-}
-
-edited_df = st.data_editor(
-    df_display,
-    column_config=col_config,
-    hide_index=True,
-    use_container_width=True,
-    key="activity_editor",
-    num_rows="fixed",
-)
-
-# ── Detección de cambios y guardado ──────────────────────────
-if can_edit:
-    st.markdown("<br>", unsafe_allow_html=True)
-    save_col, _, msg_col = st.columns([1, 2, 2])
-
-    # Detectar cambios comparando con original
-    changes = []
-    for i, (_, row) in enumerate(edited_df.iterrows()):
-        orig_row  = df.iloc[i]
-        act_id    = orig_row["id"]
-        new_status = row["Estado"]
-        old_status = original_statuses.get(act_id, "PENDIENTE")
-        if new_status != old_status:
-            changes.append({"id": act_id, "new_status": new_status, "old_status": old_status})
-
-    with save_col:
-        btn_label = f"💾 Guardar {len(changes)} cambio(s)" if changes else "💾 Sin cambios"
-        save_btn  = st.button(btn_label, disabled=(len(changes) == 0), use_container_width=True)
-
-    if save_btn and changes:
-        with st.spinner("Guardando..."):
-            n = bulk_update_statuses(changes)
-        if n == len(changes):
-            st.success(f"✅ {n} actividad(es) actualizada(s) correctamente.")
-        else:
-            st.warning(f"⚠️ Se actualizaron {n} de {len(changes)} actividades.")
-        st.rerun()
-
-# ── Detalle de actividad (expandible) ────────────────────────
-st.markdown('<div class="section-title">Detalle de actividad</div>', unsafe_allow_html=True)
-st.markdown('<div class="info-box">Selecciona una actividad para ver sus notas y agregar comentarios personales.</div>', unsafe_allow_html=True)
-
-st.markdown("<br>", unsafe_allow_html=True)
-act_names    = [f"#{a.activity_number} — {a.activity_name}" for a in filtered]
-selected_act = st.selectbox("Actividad", act_names, label_visibility="collapsed")
-
-if selected_act:
-    idx     = act_names.index(selected_act)
-    act     = filtered[idx]
-    note    = get_user_note(act.id)
-
-    dc1, dc2 = st.columns([1, 1], gap="large")
-    with dc1:
+    with st.container():
         st.markdown(f"""
-        <div style="background:#F8FAFC;border-radius:10px;padding:16px 18px;border:1px solid #E2E8F0;">
-            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;
-                        color:#94A3B8;margin-bottom:8px;">Actividad #{act.activity_number}</div>
-            <div style="font-size:15px;font-weight:600;color:#003A70;margin-bottom:12px;">{act.activity_name}</div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-                <span class="badge badge-{'completado' if act.status=='COMPLETADO' else 'progreso' if act.status=='EN PROGRESO' else 'pendiente'}">{act.status}</span>
-                <span style="background:#EFF6FF;color:#1D4ED8;font-size:11px;font-weight:600;
-                             padding:3px 10px;border-radius:20px;">{act.responsable}</span>
-                <span style="background:#F1F5F9;color:#475569;font-size:11px;font-weight:600;
-                             padding:3px 10px;border-radius:20px;">S{act.week_start}–S{act.week_end}</span>
+        <div style="background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:12px;padding:20px 24px;margin-bottom:16px;">
+            <div style="font-size:15px;font-weight:700;color:#1E40AF;margin-bottom:4px;">
+                {icono} Confirmar acción — #{ap['numero']} {ap['nombre'][:60]}
             </div>
-            <div style="font-size:13px;color:#64748B;line-height:1.6;">
-                <strong>Fase:</strong> {act.fase_name}<br>
-                <strong>Dependencias:</strong> {act.notes or '—'}
+            <div style="font-size:13px;color:#3B82F6;">
+                Estado actual: <strong>{ap['estado_actual']}</strong> → Nuevo estado: <strong>{nuevo_estado}</strong>
             </div>
         </div>
         """, unsafe_allow_html=True)
 
-    with dc2:
-        st.markdown("**📝 Mis notas privadas**")
-        new_note = st.text_area(
-            "Nota",
-            value=note,
-            placeholder="Agrega tus notas personales sobre esta actividad...",
-            height=120,
-            label_visibility="collapsed",
+        obs = st.text_area(
+            "📝 Observación (recomendado)",
+            placeholder="Describe brevemente qué ocurrió, qué se entregó, o por qué se realiza este cambio...",
+            height=90,
+            key="obs_input"
         )
-        if st.button("Guardar nota", key="save_note"):
-            if save_user_note(act.id, new_note):
-                st.success("Nota guardada.")
+
+        cc1, cc2, _ = st.columns([1, 1, 3])
+        with cc1:
+            if st.button("✅ Confirmar cambio", type="primary", use_container_width=True):
+                ok = update_activity_status(
+                    ap["id"], nuevo_estado, ap["estado_actual"], obs.strip() or None
+                )
+                if ok:
+                    st.success(f"✅ Actividad actualizada a **{nuevo_estado}**")
+                    st.session_state.accion_pendiente = None
+                    st.rerun()
+        with cc2:
+            if st.button("✗ Cancelar", use_container_width=True):
+                st.session_state.accion_pendiente = None
+                st.rerun()
+
+    st.markdown("---")
+
+# ── Tabla de actividades ──────────────────────────────────────
+STATUS_ICON = {"PENDIENTE": "⚪", "EN PROGRESO": "🟡", "COMPLETADO": "✅"}
+RESP_ICON   = {"Desarrollador": "👨‍💻", "TI": "🖥️", "Ambos": "🤝", "Liderazgo": "👔"}
+
+for fase_num in sorted(set(a.fase_number for a in activities)):
+    fase_acts = [a for a in activities if a.fase_number == fase_num]
+    if not fase_acts:
+        continue
+
+    fase_name = fase_acts[0].fase_name
+    completadas_fase = sum(1 for a in fase_acts if a.status == "COMPLETADO")
+    pct_fase = int(completadas_fase / len(fase_acts) * 100)
+
+    st.markdown(f"#### {fase_name} · {pct_fase}% completada")
+    st.progress(pct_fase / 100)
+
+    for act in fase_acts:
+        icon   = STATUS_ICON.get(act.status, "⚪")
+        rico   = RESP_ICON.get(act.responsable, "")
+
+        col_num, col_name, col_resp, col_weeks, col_status, col_obs, col_btn = st.columns(
+            [0.5, 3.5, 1.2, 0.8, 1.2, 2.5, 1.3], gap="small"
+        )
+
+        with col_num:
+            st.markdown(f"<div style='padding-top:8px;color:#94A3B8;font-size:12px;'>#{act.activity_number}</div>", unsafe_allow_html=True)
+
+        with col_name:
+            st.markdown(f"<div style='padding-top:8px;font-size:13px;font-weight:500;color:#1E293B;'>{act.activity_name}</div>", unsafe_allow_html=True)
+
+        with col_resp:
+            st.markdown(f"<div style='padding-top:8px;font-size:12px;color:#475569;'>{rico} {act.responsable}</div>", unsafe_allow_html=True)
+
+        with col_weeks:
+            st.markdown(f"<div style='padding-top:8px;font-size:12px;color:#64748B;'>S{act.week_start}–S{act.week_end}</div>", unsafe_allow_html=True)
+
+        with col_status:
+            color = {"PENDIENTE": "#94A3B8", "EN PROGRESO": "#D97706", "COMPLETADO": "#16A34A"}.get(act.status, "#94A3B8")
+            st.markdown(f"<div style='padding-top:8px;font-size:12px;font-weight:600;color:{color};'>{icon} {act.status}</div>", unsafe_allow_html=True)
+
+        with col_obs:
+            # Mostrar última observación si existe
+            last_obs = _get_last_obs(act.id)
+            if last_obs:
+                st.markdown(f"<div style='padding-top:6px;font-size:11px;color:#64748B;font-style:italic;'>💬 {last_obs[:60]}{'...' if len(last_obs)>60 else ''}</div>", unsafe_allow_html=True)
+
+        with col_btn:
+            if is_admin():
+                if act.status == "PENDIENTE":
+                    if st.button("▶ Iniciar", key=f"ini_{act.id}", use_container_width=True):
+                        st.session_state.accion_pendiente = {
+                            "id": act.id, "accion": "iniciar",
+                            "estado_actual": act.status,
+                            "nombre": act.activity_name,
+                            "numero": act.activity_number,
+                        }
+                        st.rerun()
+                elif act.status == "EN PROGRESO":
+                    if st.button("✅ Completar", key=f"comp_{act.id}", use_container_width=True):
+                        st.session_state.accion_pendiente = {
+                            "id": act.id, "accion": "completar",
+                            "estado_actual": act.status,
+                            "nombre": act.activity_name,
+                            "numero": act.activity_number,
+                        }
+                        st.rerun()
+                elif act.status == "COMPLETADO":
+                    if st.button("↩ Reabrir", key=f"reab_{act.id}", use_container_width=True):
+                        st.session_state.accion_pendiente = {
+                            "id": act.id, "accion": "reabrir",
+                            "estado_actual": act.status,
+                            "nombre": act.activity_name,
+                            "numero": act.activity_number,
+                        }
+                        st.rerun()
+            else:
+                st.markdown("<div style='padding-top:8px;font-size:11px;color:#CBD5E1;'>Solo admin</div>", unsafe_allow_html=True)
+
+    st.markdown("---")
+
+
+def _get_last_obs(activity_id: int) -> str:
+    """Obtiene la última observación registrada para una actividad."""
+    try:
+        from app.database import get_supabase_via_auth
+        client = get_supabase_via_auth()
+        res = (client.table("activity_log")
+               .select("observation")
+               .eq("activity_id", activity_id)
+               .not_.is_("observation", "null")
+               .order("changed_at", desc=True)
+               .limit(1)
+               .execute())
+        if res.data:
+            return res.data[0].get("observation", "") or ""
+    except Exception:
+        pass
+    return ""
