@@ -10,10 +10,7 @@ st.set_page_config(
 
 from app.auth import require_auth, is_admin
 from app.styles import inject_global_css
-from app.components import (
-    render_sidebar, render_page_header,
-    render_no_permission_warning, status_badge
-)
+from app.components import render_sidebar, render_page_header, render_no_permission_warning
 from app.database import (
     get_activities, get_project_config, bulk_update_statuses, get_user_note, save_user_note
 )
