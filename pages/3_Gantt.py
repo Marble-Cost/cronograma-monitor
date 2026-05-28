@@ -15,6 +15,7 @@ from app.database import get_activities, get_project_config
 from app.models import RESPONSABLES
 from app.utils import get_gantt_dataframe, get_current_week
 
+import plotly.express as px
 import plotly.graph_objects as go
 
 require_auth()
@@ -34,10 +35,11 @@ with st.expander("📖 Guía de lectura", expanded=False):
 
     **Colores por responsable:** 🟦 Azul = Desarrollador · 🟩 Verde = TI · 🟨 Amarillo = Ambos · 🟪 Morado = Liderazgo
 
-    **Línea roja punteada** = día de hoy (solo visible si hay fecha de inicio definida en ⚙️ Configuración)
+    **Línea roja punteada** = día de hoy (solo visible si hay fecha de inicio definida)
 
-    **Interactividad:** Pasa el cursor sobre cualquier barra para ver nombre, fase, responsable, estado y fechas exactas.
-    Usa los botones del panel del gráfico para hacer zoom o descargar la imagen.
+    **Tip:** Usa los botones del panel superior derecho del gráfico para hacer zoom o descargar la imagen.
+    
+    Si no hay fecha de inicio definida, ve a ⚙️ Configuración para activar las fechas reales.
     """)
 
 st.markdown("---")
@@ -68,84 +70,106 @@ if not activities:
 
 df = get_gantt_dataframe(activities, start_date)
 
-COLORS_STATUS = {"PENDIENTE": "#CBD5E1", "EN PROGRESO": "#FCD34D", "COMPLETADO": "#4ADE80"}
-BORDER_STATUS = {"PENDIENTE": "#94A3B8", "EN PROGRESO": "#D97706", "COMPLETADO": "#16A34A"}
-COLORS_RESP   = {"Desarrollador": "#93C5FD", "TI": "#6EE7B7", "Ambos": "#FDE68A", "Liderazgo": "#C4B5FD"}
+# Convertir fechas a string para px.timeline
+df["start_str"]  = df["start"].astype(str)
+df["finish_str"] = df["finish"].astype(str)
+df["label_short"] = df.apply(lambda r: f"#{r['activity_number']} {str(r['label']).split(' ',1)[-1][:40]}", axis=1)
 
-fig = go.Figure()
+# Hover info
+df["hover"] = df.apply(lambda r: (
+    f"<b>#{r['activity_number']} {str(r['label']).split(' ',1)[-1][:50]}</b><br>"
+    f"Fase: {r['fase']}<br>"
+    f"Responsable: {r['responsable']}<br>"
+    f"Estado: {r['status']}<br>"
+    f"Semanas: S{r['week_start']}–S{r['week_end']}<br>"
+    + (f"Fechas: {r['start_str']} → {r['finish_str']}" if start_date else "")
+), axis=1)
 
-for _, row in df.sort_values("activity_number").iterrows():
-    bar_color    = COLORS_STATUS[row["status"]] if color_mode == "Estado" else COLORS_RESP.get(row["responsable"], "#CBD5E1")
-    border_color = BORDER_STATUS.get(row["status"], "#94A3B8")
-    duration     = (row["finish"] - row["start"]).days
+# Paletas de color
+COLOR_STATUS = {
+    "PENDIENTE":   "#CBD5E1",
+    "EN PROGRESO": "#FCD34D",
+    "COMPLETADO":  "#4ADE80",
+}
+COLOR_RESP = {
+    "Desarrollador": "#93C5FD",
+    "TI":            "#6EE7B7",
+    "Ambos":         "#FDE68A",
+    "Liderazgo":     "#C4B5FD",
+}
 
-    hover = (
-        f"<b>#{row['activity_number']} {str(row['label']).split(' ',1)[-1][:50]}</b><br>"
-        f"<b>Fase:</b> {row['fase']}<br>"
-        f"<b>Responsable:</b> {row['responsable']}<br>"
-        f"<b>Estado:</b> {row['status']}<br>"
-        f"<b>Semanas:</b> S{row['week_start']}–S{row['week_end']}"
-    )
-    if start_date:
-        hover += f"<br><b>Fechas:</b> {row['start'].strftime('%d/%m/%Y')} → {row['finish'].strftime('%d/%m/%Y')}"
+color_col = "status" if color_mode == "Estado" else "responsable"
+color_map  = COLOR_STATUS if color_mode == "Estado" else COLOR_RESP
 
-    fig.add_trace(go.Bar(
-        y=[f"#{row['activity_number']} {str(row['label']).split(' ',1)[-1][:38]}"],
-        x=[duration], base=[row["start"]], orientation="h",
-        marker=dict(color=bar_color, line=dict(color=border_color, width=1.5)),
-        hovertemplate=hover + "<extra></extra>",
-        showlegend=False, width=432000000,
-    ))
+fig = px.timeline(
+    df.sort_values("activity_number"),
+    x_start="start_str",
+    x_end="finish_str",
+    y="label_short",
+    color=color_col,
+    color_discrete_map=color_map,
+    custom_data=["hover"],
+)
 
+fig.update_traces(
+    hovertemplate="%{customdata[0]}<extra></extra>",
+    marker_line_width=1,
+    marker_line_color="rgba(0,0,0,0.15)",
+)
+
+fig.update_yaxes(autorange="reversed", tickfont=dict(size=10))
+
+# Línea de Hoy
 current_week = get_current_week(start_date)
 if start_date and current_week:
     today_str = str(date.today())
-    fig.add_shape(type="line",
-        x0=today_str, x1=today_str, y0=0, y1=1,
+    fig.add_shape(
+        type="line",
+        x0=today_str, x1=today_str,
+        y0=0, y1=1,
         xref="x", yref="paper",
         line=dict(color="#EF4444", width=2, dash="dash"),
     )
     fig.add_annotation(
-        x=today_str, y=1.02, xref="x", yref="paper",
+        x=today_str, y=1.02,
+        xref="x", yref="paper",
         text="Hoy", showarrow=False,
-        font=dict(color="#EF4444", size=11),
+        font=dict(color="#EF4444", size=11, family="DM Sans"),
     )
 
+# Tick marks de semanas en eje X
 if start_date:
-    tick_dates = [start_date + timedelta(weeks=i) for i in range(13)]
+    tick_dates = [str(start_date + timedelta(weeks=i)) for i in range(13)]
     tick_text  = [f"S{i+1}" for i in range(12)] + ["Fin"]
+    fig.update_xaxes(tickvals=tick_dates, ticktext=tick_text,
+                     showgrid=True, gridcolor="#F1F5F9",
+                     tickfont=dict(size=11, color="#64748B"))
 else:
     base_dt    = datetime(2024, 1, 1).date()
-    tick_dates = [base_dt + timedelta(weeks=i) for i in range(13)]
+    tick_dates = [str(base_dt + timedelta(weeks=i)) for i in range(13)]
     tick_text  = [f"S{i+1}" for i in range(12)] + ["Fin"]
+    fig.update_xaxes(tickvals=tick_dates, ticktext=tick_text,
+                     showgrid=True, gridcolor="#F1F5F9",
+                     tickfont=dict(size=11, color="#64748B"))
 
 fig.update_layout(
-    barmode="overlay", paper_bgcolor="white", plot_bgcolor="white",
+    paper_bgcolor="white",
+    plot_bgcolor="white",
     font=dict(family="DM Sans, sans-serif", size=11),
-    height=max(400, len(df) * 36 + 80),
-    xaxis=dict(type="date", tickvals=tick_dates, ticktext=tick_text,
-               showgrid=True, gridcolor="#F1F5F9", tickfont=dict(size=11, color="#64748B")),
-    yaxis=dict(title="", tickfont=dict(size=10), autorange="reversed", showgrid=False),
-    margin=dict(l=10, r=20, t=20, b=30),
-    hoverlabel=dict(bgcolor="white", bordercolor="#E2E8F0", font=dict(family="DM Sans", size=12)),
+    height=max(420, len(df) * 36 + 100),
+    showlegend=True,
+    legend=dict(orientation="h", y=-0.08, x=0.5, xanchor="center",
+                font=dict(size=11), title_text=""),
+    margin=dict(l=10, r=20, t=30, b=40),
+    hoverlabel=dict(bgcolor="white", bordercolor="#E2E8F0",
+                    font=dict(family="DM Sans", size=12)),
+    xaxis_title="",
+    yaxis_title="",
 )
 
 st.plotly_chart(fig, use_container_width=True,
     config={"displayModeBar": True, "displaylogo": False,
             "modeBarButtonsToRemove": ["select2d", "lasso2d"]})
-
-st.markdown("---")
-if color_mode == "Estado":
-    c1, c2, c3 = st.columns(3)
-    c1.markdown("⬜ **Gris** — PENDIENTE")
-    c2.markdown("🟨 **Amarillo** — EN PROGRESO")
-    c3.markdown("🟩 **Verde** — COMPLETADO")
-else:
-    c1, c2, c3, c4 = st.columns(4)
-    c1.markdown("🟦 **Azul** — Desarrollador")
-    c2.markdown("🟩 **Verde agua** — TI")
-    c3.markdown("🟨 **Amarillo** — Ambos")
-    c4.markdown("🟪 **Morado** — Liderazgo")
 
 if not start_date:
     st.info("💡 Define la fecha de inicio en ⚙️ Configuración para ver fechas reales y la línea de hoy.")
