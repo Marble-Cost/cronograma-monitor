@@ -8,7 +8,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-from app.auth import require_auth, get_current_user_id, get_current_user_role, is_admin
+from app.auth import require_auth, get_current_user_id, get_current_user_role, is_admin, update_password
 from app.styles import inject_global_css
 from app.components import render_sidebar, render_page_header
 from app.database import (
@@ -32,7 +32,6 @@ render_page_header("⚙️ Configuración", "Ajustes del proyecto, perfil de usu
 tab_labels = ["📅 Proyecto", "👤 Mi Perfil", "📋 Historial"]
 if is_admin():
     tab_labels.append("👥 Usuarios")
-
 tabs = st.tabs(tab_labels)
 
 # ════════════════════════════════════════════════════════════
@@ -44,7 +43,7 @@ with tabs[0]:
     st.caption("La fecha de inicio es el punto de referencia para todas las semanas del cronograma.")
 
     if not is_admin():
-        st.info("🔒 Solo el administrador puede modificar la configuración.")
+        st.info("🔒 Solo el administrador puede modificar la configuración del proyecto.")
 
     cc1, cc2 = st.columns(2, gap="large")
     with cc1:
@@ -54,67 +53,95 @@ with tabs[0]:
             help="Todas las fechas del Gantt se calculan desde este día.")
     with cc2:
         idx = SCENARIOS.index(config.scenario) if config.scenario in SCENARIOS else 0
-        new_scenario = st.radio("🖥️ Escenario activo", SCENARIOS, index=idx,
-            disabled=not is_admin(),
-            help="Define cuál escenario se muestra por defecto en Dashboard y Configuración.")
+        new_scenario = st.radio("🖥️ Escenario activo por defecto", SCENARIOS, index=idx,
+            disabled=not is_admin())
 
     if new_date and isinstance(new_date, date):
         end_date     = get_end_date(new_date)
         current_week = get_current_week(new_date)
         weeks_left   = (12 - current_week) if current_week else 12
-
         st.success(
-            f"📅 Inicio: **{format_date_es(new_date)}** · "
-            f"Fin estimado: **{format_date_es(end_date)}** · "
-            f"Duración: **12 semanas** · "
+            f"📅 Inicio: **{format_date_es(new_date)}** · Fin: **{format_date_es(end_date)}** · "
             + (f"Semana actual: **S{current_week}** · **{weeks_left} semana(s) restante(s)**"
-               if current_week else "El proyecto aún no ha comenzado según la fecha seleccionada.")
+               if current_week else "El proyecto aún no ha comenzado.")
         )
 
     if is_admin():
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("💾 Guardar configuración", type="primary"):
+        if st.button("💾 Guardar configuración del proyecto", type="primary"):
             save_d = new_date if isinstance(new_date, date) else None
             if save_project_config(save_d, new_scenario):
-                st.success("✅ Configuración guardada correctamente.")
+                st.success("✅ Configuración guardada.")
                 st.rerun()
 
     st.markdown("---")
     st.markdown("""
-    **Guía del escenario:**
-    - **Supabase** — Base de datos en la nube. Más rápido de implementar pero requiere aprobación legal para datos externos.
-    - **SQL Server** — Servidor corporativo interno. Mayor control pero requiere más coordinación con TI.
+    **Guía de escenarios:**
+    - **Supabase** — Base de datos en la nube. Más rápido pero requiere aprobación legal para datos externos.
+    - **SQL Server** — Servidor corporativo interno. Mayor control pero requiere coordinación con TI.
     """)
 
 # ════════════════════════════════════════════════════════════
 # TAB 2 — Mi Perfil
 # ════════════════════════════════════════════════════════════
 with tabs[1]:
-    st.subheader("Mi Perfil")
     profile = get_profile(user_id) if user_id else {}
 
     pc1, pc2 = st.columns(2, gap="large")
+
+    # ── Columna izquierda: datos del perfil ───────────────────
     with pc1:
-        new_name = st.text_input("Nombre completo", value=profile.get("full_name", ""),
-                                  help="Este nombre aparece en el sidebar y en el historial de cambios.")
+        st.subheader("Datos del perfil")
+
+        new_name = st.text_input("Nombre completo",
+            value=profile.get("full_name", ""),
+            help="Este nombre aparece en el sidebar y en el historial de cambios.")
         st.text_input("Correo electrónico", value=profile.get("email", ""), disabled=True)
         st.text_input("Rol", value=role.capitalize(), disabled=True,
-                      help="El rol es asignado por el administrador.")
-        if st.button("💾 Actualizar nombre"):
+            help="El rol es asignado por el administrador.")
+
+        if st.button("💾 Actualizar nombre", key="btn_update_name"):
             if new_name.strip():
                 if update_profile_name(user_id, new_name.strip()):
-                    st.success("✅ Nombre actualizado.")
+                    st.success("✅ Nombre actualizado correctamente.")
                     st.rerun()
             else:
                 st.warning("El nombre no puede estar vacío.")
 
+    # ── Columna derecha: cambiar contraseña ───────────────────
     with pc2:
-        icon    = "👑" if role == "admin" else "👤"
-        perms   = ("✅ Ver todo · Editar estados · Configurar · Gestionar usuarios"
-                   if role == "admin" else
-                   "✅ Ver dashboard · Ver cronograma · Ver Gantt · Agregar notas privadas")
-        st.markdown(f"### {icon} {role.capitalize()}")
-        st.markdown(perms)
+        st.subheader("Cambiar contraseña")
+        st.caption("Elige una contraseña segura de al menos 6 caracteres.")
+
+        with st.form("change_password_form"):
+            new_pass     = st.text_input("Nueva contraseña", type="password",
+                placeholder="Mínimo 6 caracteres")
+            confirm_pass = st.text_input("Confirmar contraseña", type="password",
+                placeholder="Repite la contraseña")
+            change_btn   = st.form_submit_button("🔐 Actualizar contraseña", use_container_width=True)
+
+        if change_btn:
+            if not new_pass or not confirm_pass:
+                st.error("⚠️ Completa ambos campos.")
+            elif new_pass != confirm_pass:
+                st.error("❌ Las contraseñas no coinciden.")
+            elif len(new_pass) < 6:
+                st.error("⚠️ La contraseña debe tener mínimo 6 caracteres.")
+            else:
+                with st.spinner("Actualizando..."):
+                    ok, err = update_password(new_pass)
+                if ok:
+                    st.success("✅ Contraseña actualizada correctamente. La próxima vez que inicies sesión usa la nueva contraseña.")
+                else:
+                    st.error(f"❌ Error al actualizar: {err}")
+
+    st.markdown("---")
+    # Resumen de permisos
+    icon  = "👑" if role == "admin" else "👤"
+    perms = ("✅ Ver todo · Editar estados · Configurar proyecto · Gestionar usuarios"
+             if role == "admin" else
+             "✅ Ver Dashboard · Ver Cronograma · Ver Gantt · Agregar notas privadas")
+    st.markdown(f"**{icon} Rol actual: {role.capitalize()}** — {perms}")
 
 # ════════════════════════════════════════════════════════════
 # TAB 3 — Historial
@@ -153,11 +180,12 @@ with tabs[2]:
 if is_admin():
     with tabs[3]:
         st.subheader("Gestión de Usuarios")
-
         st.markdown("#### ➕ Crear nuevo usuario")
+
         with st.form("create_user_form"):
             nu_email    = st.text_input("Correo electrónico", placeholder="usuario@sofgen.com")
-            nu_password = st.text_input("Contraseña", type="password", placeholder="Mínimo 6 caracteres")
+            nu_password = st.text_input("Contraseña inicial", type="password",
+                placeholder="Mínimo 6 caracteres · el usuario puede cambiarla desde su perfil")
             nu_name     = st.text_input("Nombre completo", placeholder="Nombre Apellido")
             nu_role     = st.selectbox("Rol", ["usuario", "admin"],
                 help="usuario = solo puede ver · admin = puede editar y gestionar")
@@ -171,7 +199,7 @@ if is_admin():
             else:
                 ok, msg = create_user_as_admin(nu_email, nu_password, nu_name, nu_role)
                 if ok:
-                    st.success(f"✅ Usuario **{nu_email}** creado con rol **{nu_role}**.")
+                    st.success(f"✅ Usuario **{nu_email}** creado con rol **{nu_role}**. Ya puede iniciar sesión.")
                     st.rerun()
                 else:
                     st.error(f"❌ Error al crear usuario: {msg}")
@@ -179,6 +207,7 @@ if is_admin():
         st.markdown("---")
         st.markdown("#### 👥 Usuarios registrados")
         profiles = get_all_profiles()
+
         if not profiles:
             st.info("No hay usuarios registrados.")
         else:
@@ -188,7 +217,7 @@ if is_admin():
                     fn = p.get("full_name") or "Sin nombre"
                     st.markdown(f"**{fn}**  \n{p.get('email','—')}")
                 with uc2:
-                    cr = p.get("role", "usuario")
+                    cr    = p.get("role", "usuario")
                     new_r = st.selectbox("Rol", ["usuario","admin"],
                         index=0 if cr=="usuario" else 1,
                         key=f"role_{p['id']}", label_visibility="collapsed")
