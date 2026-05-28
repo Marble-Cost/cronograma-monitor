@@ -117,7 +117,6 @@ fig.update_traces(
     marker_line_color="rgba(0,0,0,0.15)",
 )
 
-fig.update_yaxes(autorange="reversed", tickfont=dict(size=10))
 
 # Línea de Hoy
 current_week = get_current_week(start_date)
@@ -156,19 +155,27 @@ fig.update_layout(
     paper_bgcolor="white",
     plot_bgcolor="white",
     font=dict(family="DM Sans, sans-serif", size=11),
-    height=max(420, len(df) * 36 + 100),
+    height=560,
     showlegend=True,
     legend=dict(orientation="h", y=-0.08, x=0.5, xanchor="center",
                 font=dict(size=11), title_text=""),
-    margin=dict(l=10, r=20, t=30, b=40),
+    margin=dict(l=10, r=20, t=30, b=50),
     hoverlabel=dict(bgcolor="white", bordercolor="#E2E8F0",
                     font=dict(family="DM Sans", size=12)),
     xaxis_title="",
     yaxis_title="",
+    yaxis=dict(
+        tickfont=dict(size=10),
+        autorange="reversed",
+        fixedrange=False,
+    ),
+    xaxis=dict(fixedrange=False),
+    dragmode="pan",
 )
 
+st.info("🖱️ **Navega el gráfico:** Haz clic y arrastra para moverte · Usa la rueda del mouse para hacer zoom · Doble clic para restablecer la vista")
 st.plotly_chart(fig, use_container_width=True,
-    config={"displayModeBar": True, "displaylogo": False,
+    config={"displayModeBar": True, "displaylogo": False, "scrollZoom": True,
             "modeBarButtonsToRemove": ["select2d", "lasso2d"]})
 
 if not start_date:
