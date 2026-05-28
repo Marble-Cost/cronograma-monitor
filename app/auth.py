@@ -44,6 +44,26 @@ def logout_user():
     _clear_session()
 
 
+def reset_password_for_email(email: str) -> tuple[bool, str | None]:
+    """Envía correo de recuperación de contraseña."""
+    try:
+        client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_ANON_KEY"])
+        client.auth.reset_password_for_email(email)
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+
+def update_password(new_password: str) -> tuple[bool, str | None]:
+    """Actualiza la contraseña del usuario actualmente autenticado."""
+    try:
+        client = get_supabase_client()
+        client.auth.update_user({"password": new_password})
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+
 def is_authenticated() -> bool:
     return bool(st.session_state.get("sb_access_token"))
 
