@@ -10,6 +10,13 @@ from app.utils import format_date_es
 
 def render_sidebar():
     with st.sidebar:
+        # Ocultar el menú automático de Streamlit (evita que aparezca "main")
+        st.markdown("""
+        <style>
+        [data-testid="stSidebarNav"] { display: none !important; }
+        </style>
+        """, unsafe_allow_html=True)
+
         # Logo
         logo_path = os.path.join("assets", "logo_sofgen.jpg")
         if os.path.exists(logo_path):
@@ -28,17 +35,12 @@ def render_sidebar():
             scenario = "—"
             sd       = None
 
-        st.markdown(f"""
-        **Escenario activo**  
-        {scenario}
-        
-        **Fecha inicio**  
-        {format_date_es(sd)}
-        """)
+        st.markdown(f"**Escenario activo**  \n{scenario}")
+        st.markdown(f"**Fecha inicio**  \n{format_date_es(sd)}")
 
         st.divider()
 
-        # Navegación manual (evita que aparezca "main" en el menú)
+        # Navegación manual
         st.page_link("pages/1_Dashboard.py",     label="📊 Dashboard")
         st.page_link("pages/2_Cronograma.py",    label="📋 Cronograma")
         st.page_link("pages/3_Gantt.py",         label="📅 Gantt")
