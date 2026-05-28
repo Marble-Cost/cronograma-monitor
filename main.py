@@ -9,9 +9,10 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-from app.auth import login_user, is_authenticated
+from app.auth import login_user, is_authenticated, _restore_from_cookie
 
-if is_authenticated():
+# Intentar restaurar sesión desde cookie antes de mostrar login
+if is_authenticated() or _restore_from_cookie():
     st.switch_page("pages/1_Dashboard.py")
 
 st.markdown("""
@@ -44,11 +45,10 @@ section[data-testid="stSidebar"] { display: none !important; }
     padding: 12px !important;
     width: 100% !important;
 }
-.stFormSubmitButton button:hover {
-    background: #00B5B0 !important;
-}
+.stFormSubmitButton button:hover { background: #00B5B0 !important; }
 </style>
 """, unsafe_allow_html=True)
+
 
 def load_logo_b64():
     path = os.path.join("assets", "logo_sofgen.jpg")
@@ -56,6 +56,7 @@ def load_logo_b64():
         with open(path, "rb") as f:
             return base64.b64encode(f.read()).decode()
     return None
+
 
 logo_b64 = load_logo_b64()
 
@@ -66,15 +67,8 @@ if logo_b64:
         unsafe_allow_html=True
     )
 
-st.markdown(
-    '<h2 style="text-align:center;color:white;margin-bottom:4px;">Compliance Monitor</h2>',
-    unsafe_allow_html=True
-)
-st.markdown(
-    '<p style="text-align:center;color:rgba(255,255,255,0.6);margin-bottom:28px;font-size:14px;">'
-    'Ingresa tus credenciales para continuar</p>',
-    unsafe_allow_html=True
-)
+st.markdown('<h2 style="text-align:center;color:white;margin-bottom:4px;">Compliance Monitor</h2>', unsafe_allow_html=True)
+st.markdown('<p style="text-align:center;color:rgba(255,255,255,0.6);margin-bottom:28px;font-size:14px;">Ingresa tus credenciales para continuar</p>', unsafe_allow_html=True)
 
 with st.form("login_form"):
     email    = st.text_input("Correo electrónico", placeholder="usuario@sofgen.com")
@@ -94,8 +88,4 @@ if submitted:
         else:
             st.error(f"🔒 Acceso denegado — {err}")
 
-st.markdown(
-    '<p style="text-align:center;color:rgba(255,255,255,0.35);font-size:12px;margin-top:24px;">'
-    'Sofgen Pharma · Cumplimiento Legal Corporativo · 2026</p>',
-    unsafe_allow_html=True
-)
+st.markdown('<p style="text-align:center;color:rgba(255,255,255,0.35);font-size:12px;margin-top:24px;">Sofgen Pharma · Cumplimiento Legal Corporativo · 2026</p>', unsafe_allow_html=True)
