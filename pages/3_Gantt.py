@@ -94,7 +94,7 @@ for _, row in df.sort_values("activity_number").iterrows():
         x=[duration], base=[row["start"]], orientation="h",
         marker=dict(color=bar_color, line=dict(color=border_color, width=1.5)),
         hovertemplate=hover + "<extra></extra>",
-        showlegend=False, width=0.6,
+        showlegend=False, width=432000000,
     ))
 
 current_week = get_current_week(start_date)
