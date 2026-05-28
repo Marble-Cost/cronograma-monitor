@@ -8,7 +8,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-from app.auth import require_auth, is_editor
+from app.auth import require_auth, is_admin
 from app.styles import inject_global_css
 from app.components import (
     render_sidebar, render_page_header,
@@ -96,7 +96,7 @@ if not filtered:
 # ── Tabla editable ────────────────────────────────────────────
 st.markdown('<div class="section-title">Actividades</div>', unsafe_allow_html=True)
 
-can_edit = is_editor()
+can_edit = is_admin()
 if not can_edit:
     render_no_permission_warning()
     st.markdown("<br>", unsafe_allow_html=True)
