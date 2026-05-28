@@ -26,8 +26,10 @@ html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stAppViewB
 }
 .main, .main .block-container {
     background: transparent !important;
-    padding: 1.5rem 1rem !important;
+    padding: 3rem 1rem !important;
     max-width: 460px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
 }
 
 /* Labels de inputs en blanco */
