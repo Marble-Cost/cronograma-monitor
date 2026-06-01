@@ -1,21 +1,13 @@
 import streamlit as st
 
-st.set_page_config(
-    page_title="Cronograma · Compliance Monitor",
-    page_icon="📋",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
 
-from app.auth import require_auth, is_admin
+from app.auth import is_admin
 from app.styles import inject_global_css
-from app.components import render_sidebar, render_page_header
+from app.components import render_page_header
 from app.database import get_activities, get_project_config, update_activity_status, get_activity_log
-from app.models import STATUSES, RESPONSABLES
+from app.models import STATUSES, RESPONSABLES, ACTIVITY_DEPENDENCIES
 
-require_auth()
 inject_global_css()
-render_sidebar()
 
 @st.cache_data(ttl=30)
 def get_all_observations(scenario: str) -> dict:
@@ -81,6 +73,8 @@ with fc4:
 
 all_activities = get_activities(scenario)
 observations   = get_all_observations(scenario)
+# Mapa rapido numero_actividad -> estado para verificar dependencias
+status_map = {a.activity_number: a.status for a in all_activities}
 
 activities = all_activities
 if sel_fase != "Todas las fases":
@@ -203,11 +197,23 @@ for fase_num in sorted(set(a.fase_number for a in activities)):
 
         with c6:
             if is_admin():
+                # Verificar dependencia: la actividad anterior debe estar COMPLETADA
+                pred_num    = ACTIVITY_DEPENDENCIES.get(act.activity_number)
+                pred_status = status_map.get(pred_num, "COMPLETADO") if pred_num else "COMPLETADO"
+                pred_ok     = (pred_status == "COMPLETADO")
+
                 if act.status == "PENDIENTE":
-                    if st.button("▶ Iniciar", key=f"ini_{act.id}", use_container_width=True):
-                        st.session_state.accion_pendiente = {"id": act.id, "accion": "iniciar", "estado_actual": act.status, "nombre": act.activity_name, "numero": act.activity_number}
-                        st.session_state.ver_historial = None
-                        st.rerun()
+                    if pred_ok:
+                        if st.button("▶ Iniciar", key=f"ini_{act.id}", use_container_width=True):
+                            st.session_state.accion_pendiente = {"id": act.id, "accion": "iniciar", "estado_actual": act.status, "nombre": act.activity_name, "numero": act.activity_number}
+                            st.session_state.ver_historial = None
+                            st.rerun()
+                    else:
+                        st.markdown(
+                            f"<div style='padding-top:6px;font-size:10px;color:#D97706;'"
+                            f">🔒 Completa #{pred_num} primero</div>",
+                            unsafe_allow_html=True
+                        )
                 elif act.status == "EN PROGRESO":
                     if st.button("✅ Completar", key=f"comp_{act.id}", use_container_width=True):
                         st.session_state.accion_pendiente = {"id": act.id, "accion": "completar", "estado_actual": act.status, "nombre": act.activity_name, "numero": act.activity_number}
