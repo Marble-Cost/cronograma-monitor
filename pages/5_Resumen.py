@@ -2,9 +2,9 @@ import streamlit as st
 
 st.set_page_config(
     page_title="Resumen Ejecutivo · Compliance Monitor",
-    page_icon="📊",
+    page_icon="🎯",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
 from app.auth import require_auth
@@ -17,37 +17,7 @@ require_auth()
 inject_global_css()
 render_sidebar()
 
-config       = get_project_config()
-start_date   = config.start_date
-current_week = get_current_week(start_date)
-
-# ── Selector de escenario ─────────────────────────────────────
-col_s, col_t = st.columns([2, 5])
-with col_s:
-    scenario = st.radio("Escenario", ["Supabase", "SQL Server"],
-                        index=0 if config.scenario == "Supabase" else 1,
-                        horizontal=True, label_visibility="collapsed")
-
-kpis           = get_kpis(scenario)
-phase_progress = get_phase_progress(scenario)
-all_acts       = get_activities(scenario)
-
-# ── Salud ─────────────────────────────────────────────────────
-if kpis.pct_completed >= 100:
-    salud_icon, salud_label, salud_bg, salud_fg = "🏆", "PROYECTO COMPLETADO", "#DCFCE7", "#16A34A"
-elif current_week:
-    expected = (current_week / 12) * 100
-    diff     = kpis.pct_completed - expected
-    if diff >= 0:
-        salud_icon, salud_label, salud_bg, salud_fg = "🟢", "EN TIEMPO", "#DCFCE7", "#16A34A"
-    elif diff >= -15:
-        salud_icon, salud_label, salud_bg, salud_fg = "🟡", "LIGERAMENTE ATRASADO", "#FEF9C3", "#D97706"
-    else:
-        salud_icon, salud_label, salud_bg, salud_fg = "🔴", "EN RIESGO", "#FEE2E2", "#DC2626"
-else:
-    salud_icon, salud_label, salud_bg, salud_fg = "⏸", "SIN FECHA DE INICIO", "#F1F5F9", "#64748B"
-
-# ── CSS limpio para modo reunión ──────────────────────────────
+# ── CSS específico del resumen — debe ir ANTES de cualquier contenido ──
 st.markdown("""
 <style>
 .resumen-header {
@@ -93,6 +63,37 @@ st.markdown("""
 }
 </style>
 """, unsafe_allow_html=True)
+
+# ── Datos ─────────────────────────────────────────────────────
+config       = get_project_config()
+start_date   = config.start_date
+current_week = get_current_week(start_date)
+
+# ── Selector de escenario ─────────────────────────────────────
+col_s, _ = st.columns([2, 5])
+with col_s:
+    scenario = st.radio("Escenario", ["Supabase", "SQL Server"],
+                        index=0 if config.scenario == "Supabase" else 1,
+                        horizontal=True, label_visibility="collapsed")
+
+kpis           = get_kpis(scenario)
+phase_progress = get_phase_progress(scenario)
+all_acts       = get_activities(scenario)
+
+# ── Cálculo de salud ──────────────────────────────────────────
+if kpis.pct_completed >= 100:
+    salud_icon, salud_label, salud_bg, salud_fg = "🏆", "PROYECTO COMPLETADO", "#DCFCE7", "#16A34A"
+elif current_week:
+    expected = (current_week / 12) * 100
+    diff     = kpis.pct_completed - expected
+    if diff >= 0:
+        salud_icon, salud_label, salud_bg, salud_fg = "🟢", "EN TIEMPO", "#DCFCE7", "#16A34A"
+    elif diff >= -15:
+        salud_icon, salud_label, salud_bg, salud_fg = "🟡", "LIGERAMENTE ATRASADO", "#FEF9C3", "#D97706"
+    else:
+        salud_icon, salud_label, salud_bg, salud_fg = "🔴", "EN RIESGO", "#FEE2E2", "#DC2626"
+else:
+    salud_icon, salud_label, salud_bg, salud_fg = "⏸", "SIN FECHA DE INICIO", "#F1F5F9", "#64748B"
 
 # ── Cabecera principal ────────────────────────────────────────
 semana_txt = f"Semana {current_week} de 12" if current_week else "Sin fecha de inicio"
@@ -158,7 +159,6 @@ with col_fases:
 # ── Próximas actividades ──────────────────────────────────────
 with col_prox:
     st.subheader("Próximas Actividades a Iniciar")
-
     pendientes = [a for a in sorted(all_acts, key=lambda x: x.activity_number)
                   if a.status == "PENDIENTE"][:5]
 
