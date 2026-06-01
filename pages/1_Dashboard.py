@@ -1,23 +1,14 @@
 import streamlit as st
 from datetime import date
 
-st.set_page_config(
-    page_title="Dashboard · Compliance Monitor",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
 
-from app.auth import require_auth
 from app.styles import inject_global_css
-from app.components import render_sidebar, render_page_header
+from app.components import render_page_header
 from app.database import get_kpis, get_phase_progress, get_project_config, get_recent_log
 from app.utils import format_date_es, get_current_week, get_end_date, semaforo_fase
 import plotly.graph_objects as go
 
-require_auth()
 inject_global_css()
-render_sidebar()
 
 config         = get_project_config()
 start_date     = config.start_date
@@ -177,3 +168,62 @@ else:
             {obs_html}
         </div>
         """, unsafe_allow_html=True)
+
+# ── Exportar (solo admin) ─────────────────────────────────────
+from app.auth import is_admin
+if is_admin():
+    st.markdown("---")
+    st.subheader("📤 Exportar Informe")
+    st.caption("Genera un archivo con el estado actual del proyecto para trabajar fuera de la app.")
+
+    exp1, exp2 = st.columns(2, gap="medium")
+
+    with exp1:
+        st.markdown("##### 📊 Excel Profesional")
+        st.markdown("Versión editable del cronograma con Gantt de barras, fórmulas automáticas e historial de observaciones.")
+        if st.button("⬇️ Descargar Excel", use_container_width=True, key="btn_excel"):
+            with st.spinner("Generando Excel..."):
+                try:
+                    from app.database import get_full_log
+                    from app.export_excel import generate_excel
+                    acts_exp  = __import__('app.database', fromlist=['get_activities']).get_activities(scenario)
+                    kpis_exp  = __import__('app.database', fromlist=['get_kpis']).get_kpis(scenario)
+                    ph_exp    = __import__('app.database', fromlist=['get_phase_progress']).get_phase_progress(scenario)
+                    logs_exp  = get_full_log(300)
+                    cfg_exp   = get_project_config()
+                    excel_bytes = generate_excel(acts_exp, logs_exp, kpis_exp, ph_exp, cfg_exp, scenario)
+                    st.download_button(
+                        label="📥 Haz clic aquí para guardar",
+                        data=excel_bytes,
+                        file_name=f"ComplianceMonitor_{scenario.replace(' ','_')}_{date.today()}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                    )
+                except Exception as e:
+                    st.error(f"Error al generar Excel: {e}")
+
+    with exp2:
+        st.markdown("##### 📄 PDF Ejecutivo")
+        st.markdown("Informe ejecutivo listo para imprimir o enviar: salud del proyecto, KPIs, avance por fase y alertas.")
+        if st.button("⬇️ Descargar PDF", use_container_width=True, key="btn_pdf"):
+            with st.spinner("Generando PDF..."):
+                try:
+                    from app.export_pdf import generate_pdf
+                    acts_exp  = __import__('app.database', fromlist=['get_activities']).get_activities(scenario)
+                    kpis_exp  = __import__('app.database', fromlist=['get_kpis']).get_kpis(scenario)
+                    ph_exp    = __import__('app.database', fromlist=['get_phase_progress']).get_phase_progress(scenario)
+                    logs_exp  = get_recent_log(50)
+                    cfg_exp   = get_project_config()
+                    atrasadas = [a for a in acts_exp
+                                 if a.status == "PENDIENTE" and start_date and current_week
+                                 and a.week_start <= current_week]
+                    pdf_bytes = generate_pdf(acts_exp, logs_exp, kpis_exp, ph_exp, cfg_exp, scenario, atrasadas)
+                    st.download_button(
+                        label="📥 Haz clic aquí para guardar",
+                        data=pdf_bytes,
+                        file_name=f"ComplianceMonitor_{scenario.replace(' ','_')}_{date.today()}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True,
+                    )
+                except Exception as e:
+                    st.error(f"Error al generar PDF: {e}")
