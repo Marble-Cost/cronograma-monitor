@@ -22,11 +22,7 @@ def login_user(email: str, password: str) -> tuple[bool, str | None]:
         client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_ANON_KEY"])
         res = client.auth.sign_in_with_password({"email": email, "password": password})
         if res.user and res.session:
-            st.session_state["sb_access_token"]  = res.session.access_token
-            st.session_state["sb_refresh_token"] = res.session.refresh_token
-            st.session_state["sb_user_email"]    = res.user.email
-            st.session_state["sb_user_id"]       = str(res.user.id)
-            _load_profile(client, str(res.user.id))
+            _store_session(res.user, res.session)
             return True, None
         return False, "Credenciales inválidas"
     except Exception as e:
@@ -34,6 +30,22 @@ def login_user(email: str, password: str) -> tuple[bool, str | None]:
         if "Invalid login" in msg or "invalid_credentials" in msg:
             return False, "Correo o contraseña incorrectos"
         return False, msg
+
+
+def restore_session_from_token(refresh_token: str) -> bool:
+    """
+    Intenta restaurar la sesión usando el refresh_token guardado en el navegador.
+    Devuelve True si logra restaurarla, False si el token expiró.
+    """
+    try:
+        client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_ANON_KEY"])
+        res = client.auth.refresh_session(refresh_token)
+        if res.user and res.session:
+            _store_session(res.user, res.session)
+            return True
+    except Exception:
+        pass
+    return False
 
 
 def logout_user():
@@ -45,7 +57,6 @@ def logout_user():
 
 
 def reset_password_for_email(email: str) -> tuple[bool, str | None]:
-    """Envía correo de recuperación de contraseña."""
     try:
         client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_ANON_KEY"])
         client.auth.reset_password_for_email(email)
@@ -55,7 +66,6 @@ def reset_password_for_email(email: str) -> tuple[bool, str | None]:
 
 
 def update_password(new_password: str) -> tuple[bool, str | None]:
-    """Actualiza la contraseña del usuario actualmente autenticado."""
     try:
         client = get_supabase_client()
         client.auth.update_user({"password": new_password})
@@ -69,8 +79,14 @@ def is_authenticated() -> bool:
 
 
 def require_auth():
+    """Protege cada página. Si no hay sesión, redirige al login limpiamente."""
     if not is_authenticated():
-        st.switch_page("main.py")
+        try:
+            st.switch_page("main.py")
+        except Exception:
+            st.warning("⚠️ Tu sesión ha expirado. Por favor recarga la página para volver a ingresar.")
+            st.stop()
+        st.stop()
 
 
 def get_current_user_id() -> str | None:
@@ -93,6 +109,17 @@ def get_current_user_role() -> str:
 
 def is_admin() -> bool:
     return get_current_user_role() == "admin"
+
+
+# ── Internos ──────────────────────────────────────────────────
+
+def _store_session(user, session):
+    st.session_state["sb_access_token"]  = session.access_token
+    st.session_state["sb_refresh_token"] = session.refresh_token
+    st.session_state["sb_user_email"]    = user.email
+    st.session_state["sb_user_id"]       = str(user.id)
+    client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_ANON_KEY"])
+    _load_profile(client, str(user.id))
 
 
 def _load_profile(client: Client, user_id: str):
