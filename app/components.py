@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import os
 from app.auth import (
     get_current_user_name, get_current_user_email,
@@ -6,7 +7,33 @@ from app.auth import (
 )
 
 
+def save_session_to_browser():
+    """
+    Guarda el refresh_token en el localStorage del navegador.
+    Se llama en cada render del sidebar para mantener la pulsera activa.
+    """
+    refresh_token = st.session_state.get("sb_refresh_token", "")
+    if not refresh_token:
+        return
+    safe_token = refresh_token.replace("'", "\\'")
+    components.html(
+        f"<script>try{{localStorage.setItem('cm_rt','{safe_token}');}}catch(e){{}}</script>",
+        height=0,
+    )
+
+
+def clear_session_from_browser():
+    """Borra la pulsera del navegador al cerrar sesión."""
+    components.html(
+        "<script>try{localStorage.removeItem('cm_rt');}catch(e){}</script>",
+        height=0,
+    )
+
+
 def render_sidebar():
+    # Guardar pulsera en navegador en cada render (mantiene sesión actualizada)
+    save_session_to_browser()
+
     with st.sidebar:
         # Logo
         logo_path = os.path.join("assets", "logo_sofgen.jpg")
@@ -23,9 +50,9 @@ def render_sidebar():
 
         st.markdown("---")
 
-        # Usuario — nombre completo, no correo
-        name = get_current_user_name()
-        role = get_current_user_role()
+        # Usuario
+        name  = get_current_user_name()
+        role  = get_current_user_role()
         role_label = "Administrador" if role == "admin" else "Usuario"
 
         st.markdown(f"""
@@ -36,6 +63,7 @@ def render_sidebar():
 """, unsafe_allow_html=True)
 
         if st.button("Cerrar sesión", use_container_width=True, key="sidebar_logout"):
+            clear_session_from_browser()
             logout_user()
             st.switch_page("main.py")
 
