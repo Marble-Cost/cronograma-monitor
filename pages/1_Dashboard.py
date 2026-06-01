@@ -19,15 +19,17 @@ require_auth()
 inject_global_css()
 render_sidebar()
 
-config       = get_project_config()
-start_date   = config.start_date
-end_date     = get_end_date(start_date)
-current_week = get_current_week(start_date)
+config         = get_project_config()
+start_date     = config.start_date
+end_date       = get_end_date(start_date)
+current_week   = get_current_week(start_date)
 
-sc1, _ = st.columns([2, 5])
+# ── Selector de escenario ─────────────────────────────────────
+sc1, sc2 = st.columns([2, 5])
 with sc1:
     scenario = st.radio("Escenario", ["Supabase", "SQL Server"],
-                        index=0 if config.scenario == "Supabase" else 1, horizontal=True)
+                        index=0 if config.scenario == "Supabase" else 1,
+                        horizontal=True)
 
 kpi            = get_kpis(scenario)
 phase_progress = get_phase_progress(scenario)
@@ -35,13 +37,13 @@ phase_progress = get_phase_progress(scenario)
 render_page_header("📊 Dashboard",
     f"Progreso en tiempo real · {scenario} · {format_date_es(start_date)} → {format_date_es(end_date)}")
 
-# ── Indicador de salud ────────────────────────────────────────
+# ── Indicador de salud del proyecto ──────────────────────────
 if start_date and current_week:
     expected_pct = round((current_week / 12) * 100)
     real_pct     = kpi.pct_completed
     diff         = real_pct - expected_pct
 
-    if real_pct >= 100:
+    if real_pct == 100:
         salud_icon, salud_label, salud_color = "🏆", "PROYECTO COMPLETADO", "#16A34A"
     elif diff >= 0:
         salud_icon, salud_label, salud_color = "🟢", "EN TIEMPO", "#16A34A"
@@ -70,24 +72,22 @@ if start_date and current_week:
     </div>
     """, unsafe_allow_html=True)
 
-    all_acts  = get_activities(scenario)
-    atrasadas = [a for a in all_acts
+    atrasadas = [a for a in get_activities(scenario)
                  if a.status == "PENDIENTE" and a.week_start <= current_week]
     if atrasadas:
         with st.expander(f"⚠️ {len(atrasadas)} actividad(es) deberían haber iniciado ya", expanded=True):
             for a in atrasadas:
                 st.markdown(f"- **#{a.activity_number}** {a.activity_name} · _{a.responsable}_ · debió iniciar en S{a.week_start}")
-else:
-    st.info("💡 Define la **fecha de inicio** en ⚙️ Configuración para activar el indicador de salud del proyecto.")
-    atrasadas = []
 
-st.markdown("---")
+elif not start_date:
+    st.info("💡 Define la **fecha de inicio** en ⚙️ Configuración para activar el indicador de salud del proyecto.")
 
 # ── KPIs ──────────────────────────────────────────────────────
+st.markdown("---")
 c1, c2, c3, c4 = st.columns(4, gap="medium")
-c1.metric("⚪ Pendientes",   kpi.pending,     "actividades sin iniciar")
-c2.metric("🟡 En Progreso",  kpi.in_progress, "actividades activas")
-c3.metric("✅ Completadas",  kpi.completed,   "actividades finalizadas")
+c1.metric("⚪ Pendientes",   kpi.pending,      "actividades sin iniciar")
+c2.metric("🟡 En Progreso",  kpi.in_progress,  "actividades activas")
+c3.metric("✅ Completadas",  kpi.completed,    "actividades finalizadas")
 c4.metric("📈 % Completado", f"{kpi.pct_completed:.0f}%", f"de {kpi.total} totales")
 
 st.markdown("---")
@@ -152,7 +152,7 @@ st.subheader("📰 Últimas novedades del proyecto")
 st.caption("Los cambios más recientes registrados por cualquier usuario del sistema.")
 logs = get_recent_log(8)
 if not logs:
-    st.info("Aún no hay cambios registrados.")
+    st.info("Aún no hay cambios registrados. Los cambios aparecerán aquí cuando el admin actualice actividades.")
 else:
     for log in logs:
         act_name   = log["activities"].get("activity_name", "—")[:55] if log.get("activities") else "—"
