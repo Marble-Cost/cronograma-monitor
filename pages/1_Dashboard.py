@@ -1,23 +1,14 @@
 import streamlit as st
 from datetime import date
 
-st.set_page_config(
-    page_title="Dashboard · Compliance Monitor",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
 
-from app.auth import require_auth
 from app.styles import inject_global_css
-from app.components import render_sidebar, render_page_header
+from app.components import render_page_header
 from app.database import get_kpis, get_phase_progress, get_project_config, get_recent_log
 from app.utils import format_date_es, get_current_week, get_end_date, semaforo_fase
 import plotly.graph_objects as go
 
-require_auth()
 inject_global_css()
-render_sidebar()
 
 config         = get_project_config()
 start_date     = config.start_date
