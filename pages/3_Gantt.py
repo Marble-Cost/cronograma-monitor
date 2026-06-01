@@ -1,9 +1,16 @@
 import streamlit as st
 from datetime import date, timedelta, datetime
 
+st.set_page_config(
+    page_title="Gantt · Compliance Monitor",
+    page_icon="📅",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
+from app.auth import require_auth
 from app.styles import inject_global_css
-from app.components import render_page_header
+from app.components import render_sidebar, render_page_header
 from app.database import get_activities, get_project_config
 from app.models import RESPONSABLES
 from app.utils import get_gantt_dataframe, get_current_week
@@ -11,7 +18,9 @@ from app.utils import get_gantt_dataframe, get_current_week
 import plotly.express as px
 import plotly.graph_objects as go
 
+require_auth()
 inject_global_css()
+render_sidebar()
 
 config     = get_project_config()
 start_date = config.start_date
