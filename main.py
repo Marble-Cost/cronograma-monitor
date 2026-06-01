@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import os, base64
 
 st.set_page_config(
@@ -8,11 +9,58 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-from app.auth import login_user, is_authenticated, reset_password_for_email
+from app.auth import login_user, is_authenticated, restore_session_from_token, reset_password_for_email
 
+# ═══════════════════════════════════════════════════════════
+# PASO 1: Verificar si hay un token de restauración en la URL
+# (Lo coloca el navegador cuando detecta la pulsera guardada)
+# ═══════════════════════════════════════════════════════════
+restore_token = st.query_params.get("_rt", "")
+if restore_token:
+    # Limpiar el token de la URL inmediatamente
+    st.query_params.clear()
+    with st.spinner("Restaurando tu sesión..."):
+        ok = restore_session_from_token(restore_token)
+    if ok:
+        st.switch_page("pages/1_Dashboard.py")
+        st.stop()
+    else:
+        # Token expirado — borrar la pulsera del navegador
+        components.html(
+            "<script>try{localStorage.removeItem('cm_rt');}catch(e){}</script>",
+            height=0,
+        )
+
+# ═══════════════════════════════════════════════════════════
+# PASO 2: Si ya hay sesión activa, ir directo al Dashboard
+# ═══════════════════════════════════════════════════════════
 if is_authenticated():
     st.switch_page("pages/1_Dashboard.py")
+    st.stop()
 
+# ═══════════════════════════════════════════════════════════
+# PASO 3: Sin sesión — inyectar JS que lee la pulsera del
+# navegador y redirige con el token si existe
+# ═══════════════════════════════════════════════════════════
+components.html("""
+<script>
+(function() {
+    try {
+        var token = localStorage.getItem('cm_rt');
+        if (token && !window.parent.location.search.includes('_rt=')) {
+            setTimeout(function() {
+                var url = window.parent.location.pathname + '?_rt=' + encodeURIComponent(token);
+                window.parent.location.replace(url);
+            }, 150);
+        }
+    } catch(e) {}
+})();
+</script>
+""", height=0)
+
+# ═══════════════════════════════════════════════════════════
+# CSS del login
+# ═══════════════════════════════════════════════════════════
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
@@ -21,7 +69,7 @@ st.markdown("""
 section[data-testid="stSidebar"], [data-testid="collapsedControl"] { display: none !important; }
 html, body, .stApp, [data-testid="stAppViewContainer"] {
     background: linear-gradient(135deg, #002a52 0%, #003A70 60%, #004d94 100%) !important;
-    height: 100vh !important; overflow: hidden !important;
+    min-height: 100vh !important;
 }
 .main { background: transparent !important; }
 .main .block-container {
@@ -40,7 +88,10 @@ html, body, .stApp, [data-testid="stAppViewContainer"] {
     background: rgba(255,255,255,0.95) !important;
     padding: 8px 12px !important; font-size: 14px !important;
 }
-.stTextInput input:focus { border-color: #00B5B0 !important; box-shadow: 0 0 0 2px rgba(0,181,176,0.2) !important; }
+.stTextInput input:focus {
+    border-color: #00B5B0 !important;
+    box-shadow: 0 0 0 2px rgba(0,181,176,0.2) !important;
+}
 .stFormSubmitButton button {
     background: #00B5B0 !important; color: white !important;
     border: none !important; border-radius: 8px !important;
@@ -49,17 +100,12 @@ html, body, .stApp, [data-testid="stAppViewContainer"] {
 .stFormSubmitButton button:hover { background: #009990 !important; }
 [data-testid="stForm"] { background: transparent !important; border: none !important; }
 [data-testid="stVerticalBlock"] { gap: 0.25rem !important; }
-.recovery-link {
-    text-align: center; margin-top: 8px;
-}
-.recovery-link a {
-    color: rgba(255,255,255,0.55) !important;
-    font-size: 13px; text-decoration: underline; cursor: pointer;
-}
-.recovery-link a:hover { color: #00B5B0 !important; }
 </style>
 """, unsafe_allow_html=True)
 
+# ═══════════════════════════════════════════════════════════
+# Logo
+# ═══════════════════════════════════════════════════════════
 def load_logo():
     p = os.path.join("assets", "logo_sofgen.jpg")
     if os.path.exists(p):
@@ -69,21 +115,29 @@ def load_logo():
 
 logo = load_logo()
 
-# ── Estado de pantalla ────────────────────────────────────────
+if logo:
+    st.markdown(
+        f'<div style="text-align:center;margin-bottom:14px;margin-top:10px;">'
+        f'<img src="data:image/jpeg;base64,{logo}" width="100" '
+        f'style="border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,0.3);"></div>',
+        unsafe_allow_html=True
+    )
+
+# ═══════════════════════════════════════════════════════════
+# Estado de pantalla
+# ═══════════════════════════════════════════════════════════
 if "show_recovery" not in st.session_state:
     st.session_state.show_recovery = False
 if "recovery_sent" not in st.session_state:
     st.session_state.recovery_sent = False
 
-# ── Logo y título ─────────────────────────────────────────────
-if logo:
-    st.markdown(f'<div style="text-align:center;margin-bottom:14px;margin-top:10px;"><img src="data:image/jpeg;base64,{logo}" width="100" style="border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,0.3);"></div>', unsafe_allow_html=True)
-
+# ═══════════════════════════════════════════════════════════
+# Pantalla de login
+# ═══════════════════════════════════════════════════════════
 if not st.session_state.show_recovery:
     st.markdown('<h2 style="text-align:center;color:white;font-size:22px;font-weight:700;margin:0 0 2px 0;">Compliance Monitor</h2>', unsafe_allow_html=True)
     st.markdown('<p style="text-align:center;color:rgba(255,255,255,0.5);margin:0 0 14px 0;font-size:13px;">Sofgen Pharma · Ingresa tus credenciales</p>', unsafe_allow_html=True)
 
-    # ── Formulario de login ───────────────────────────────────
     with st.form("login_form"):
         email    = st.text_input("Correo electrónico", placeholder="usuario@sofgen.com")
         password = st.text_input("Contraseña", type="password", placeholder="••••••••")
@@ -100,13 +154,14 @@ if not st.session_state.show_recovery:
             else:
                 st.error(f"🔒 Acceso denegado — {err}")
 
-    # ── Link recuperar contraseña ─────────────────────────────
     if st.button("¿Olvidaste tu contraseña?", use_container_width=True, key="btn_recovery"):
         st.session_state.show_recovery = True
         st.rerun()
 
+# ═══════════════════════════════════════════════════════════
+# Pantalla de recuperación
+# ═══════════════════════════════════════════════════════════
 else:
-    # ── Pantalla de recuperación ──────────────────────────────
     st.markdown('<h2 style="text-align:center;color:white;font-size:20px;font-weight:700;margin:0 0 4px 0;">Recuperar contraseña</h2>', unsafe_allow_html=True)
     st.markdown('<p style="text-align:center;color:rgba(255,255,255,0.5);margin:0 0 14px 0;font-size:13px;">Te enviaremos un correo para restablecer tu contraseña</p>', unsafe_allow_html=True)
 
@@ -125,12 +180,10 @@ else:
                     st.session_state.recovery_sent = True
                     st.rerun()
                 else:
-                    st.error(f"❌ No se pudo enviar el correo — {err}")
+                    st.error(f"❌ Error — {err}")
     else:
-        st.success("✅ Correo enviado. Revisa tu bandeja de entrada y sigue las instrucciones para restablecer tu contraseña.")
-        st.markdown('<p style="text-align:center;color:rgba(255,255,255,0.5);font-size:12px;margin-top:8px;">Si no lo ves en unos minutos, revisa tu carpeta de spam.</p>', unsafe_allow_html=True)
+        st.success("✅ Correo enviado. Revisa tu bandeja de entrada.")
 
-    st.markdown("<br>", unsafe_allow_html=True)
     if st.button("← Volver al inicio de sesión", use_container_width=True, key="btn_back"):
         st.session_state.show_recovery = False
         st.session_state.recovery_sent = False
