@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import os, base64
 
 st.set_page_config(
@@ -9,58 +8,13 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-from app.auth import login_user, is_authenticated, restore_session_from_token, reset_password_for_email
+from app.auth import login_user, is_authenticated, reset_password_for_email
 
-# ═══════════════════════════════════════════════════════════
-# PASO 1: Verificar si hay un token de restauración en la URL
-# (Lo coloca el navegador cuando detecta la pulsera guardada)
-# ═══════════════════════════════════════════════════════════
-restore_token = st.query_params.get("_rt", "")
-if restore_token:
-    # Limpiar el token de la URL inmediatamente
-    st.query_params.clear()
-    with st.spinner("Restaurando tu sesión..."):
-        ok = restore_session_from_token(restore_token)
-    if ok:
-        st.switch_page("pages/1_Dashboard.py")
-        st.stop()
-    else:
-        # Token expirado — borrar la pulsera del navegador
-        components.html(
-            "<script>try{localStorage.removeItem('cm_rt');}catch(e){}</script>",
-            height=0,
-        )
-
-# ═══════════════════════════════════════════════════════════
-# PASO 2: Si ya hay sesión activa, ir directo al Dashboard
-# ═══════════════════════════════════════════════════════════
+# ── Redirigir si ya hay sesión activa ─────────────────────────
 if is_authenticated():
     st.switch_page("pages/1_Dashboard.py")
-    st.stop()
 
-# ═══════════════════════════════════════════════════════════
-# PASO 3: Sin sesión — inyectar JS que lee la pulsera del
-# navegador y redirige con el token si existe
-# ═══════════════════════════════════════════════════════════
-components.html("""
-<script>
-(function() {
-    try {
-        var token = localStorage.getItem('cm_rt');
-        if (token && !window.parent.location.search.includes('_rt=')) {
-            setTimeout(function() {
-                var url = window.parent.location.pathname + '?_rt=' + encodeURIComponent(token);
-                window.parent.location.replace(url);
-            }, 150);
-        }
-    } catch(e) {}
-})();
-</script>
-""", height=0)
-
-# ═══════════════════════════════════════════════════════════
-# CSS del login
-# ═══════════════════════════════════════════════════════════
+# ── CSS ───────────────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
@@ -103,37 +57,32 @@ html, body, .stApp, [data-testid="stAppViewContainer"] {
 </style>
 """, unsafe_allow_html=True)
 
-# ═══════════════════════════════════════════════════════════
-# Logo
-# ═══════════════════════════════════════════════════════════
+# ── Logo ──────────────────────────────────────────────────────
 def load_logo():
-    p = os.path.join("assets", "logo_sofgen.jpg")
-    if os.path.exists(p):
-        with open(p, "rb") as f:
-            return base64.b64encode(f.read()).decode()
-    return None
+    for ext in ["png", "jpg", "jpeg", "webp"]:
+        p = os.path.join("assets", f"logo_sofgen.{ext}")
+        if os.path.exists(p):
+            with open(p, "rb") as f:
+                return base64.b64encode(f.read()).decode(), ext
+    return None, None
 
-logo = load_logo()
-
-if logo:
+logo_data, logo_ext = load_logo()
+if logo_data:
+    mime = "png" if logo_ext == "png" else "jpeg"
     st.markdown(
         f'<div style="text-align:center;margin-bottom:14px;margin-top:10px;">'
-        f'<img src="data:image/jpeg;base64,{logo}" width="100" '
+        f'<img src="data:image/{mime};base64,{logo_data}" width="100" '
         f'style="border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,0.3);"></div>',
         unsafe_allow_html=True
     )
 
-# ═══════════════════════════════════════════════════════════
-# Estado de pantalla
-# ═══════════════════════════════════════════════════════════
+# ── Estado de pantalla ────────────────────────────────────────
 if "show_recovery" not in st.session_state:
     st.session_state.show_recovery = False
 if "recovery_sent" not in st.session_state:
     st.session_state.recovery_sent = False
 
-# ═══════════════════════════════════════════════════════════
-# Pantalla de login
-# ═══════════════════════════════════════════════════════════
+# ── Pantalla de login ─────────────────────────────────────────
 if not st.session_state.show_recovery:
     st.markdown('<h2 style="text-align:center;color:white;font-size:22px;font-weight:700;margin:0 0 2px 0;">Compliance Monitor</h2>', unsafe_allow_html=True)
     st.markdown('<p style="text-align:center;color:rgba(255,255,255,0.5);margin:0 0 14px 0;font-size:13px;">Sofgen Pharma · Ingresa tus credenciales</p>', unsafe_allow_html=True)
@@ -158,9 +107,7 @@ if not st.session_state.show_recovery:
         st.session_state.show_recovery = True
         st.rerun()
 
-# ═══════════════════════════════════════════════════════════
-# Pantalla de recuperación
-# ═══════════════════════════════════════════════════════════
+# ── Pantalla de recuperación ──────────────────────────────────
 else:
     st.markdown('<h2 style="text-align:center;color:white;font-size:20px;font-weight:700;margin:0 0 4px 0;">Recuperar contraseña</h2>', unsafe_allow_html=True)
     st.markdown('<p style="text-align:center;color:rgba(255,255,255,0.5);margin:0 0 14px 0;font-size:13px;">Te enviaremos un correo para restablecer tu contraseña</p>', unsafe_allow_html=True)
@@ -183,6 +130,7 @@ else:
                     st.error(f"❌ Error — {err}")
     else:
         st.success("✅ Correo enviado. Revisa tu bandeja de entrada.")
+        st.caption("Si no lo ves en unos minutos, revisa la carpeta de spam.")
 
     if st.button("← Volver al inicio de sesión", use_container_width=True, key="btn_back"):
         st.session_state.show_recovery = False
