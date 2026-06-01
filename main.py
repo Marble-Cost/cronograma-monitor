@@ -59,9 +59,14 @@ html, body, .stApp, [data-testid="stAppViewContainer"] {
 
 # ── Logo ──────────────────────────────────────────────────────
 def load_logo():
-    for ext in ["png", "jpg", "jpeg", "webp"]:
-        p = os.path.join("assets", f"logo_sofgen.{ext}")
+    candidates = [
+        "logo_sofgen.png", "logo_sofgen.jpg", "logo_sofgen.jpeg", "logo_sofgen.webp",
+        "logo-sofgen.png", "logo-sofgen.jpg", "logo-sofgen.jpeg", "logo-sofgen.webp",
+    ]
+    for name in candidates:
+        p = os.path.join("assets", name)
         if os.path.exists(p):
+            ext = name.split(".")[-1]
             with open(p, "rb") as f:
                 return base64.b64encode(f.read()).decode(), ext
     return None, None
@@ -70,9 +75,10 @@ logo_data, logo_ext = load_logo()
 if logo_data:
     mime = "png" if logo_ext == "png" else "jpeg"
     st.markdown(
-        f'<div style="text-align:center;margin-bottom:14px;margin-top:10px;">'
-        f'<img src="data:image/{mime};base64,{logo_data}" width="100" '
-        f'style="border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,0.3);"></div>',
+        f'<div style="text-align:center;margin:16px auto 20px auto;max-width:380px;">'
+        f'<img src="data:image/{mime};base64,{logo_data}" width="340" '
+        f'style="border-radius:12px;background:white;padding:12px 16px;'
+        f'box-shadow:0 4px 20px rgba(0,0,0,0.25);display:block;margin:0 auto;"></div>',
         unsafe_allow_html=True
     )
 
@@ -84,8 +90,8 @@ if "recovery_sent" not in st.session_state:
 
 # ── Pantalla de login ─────────────────────────────────────────
 if not st.session_state.show_recovery:
-    st.markdown('<h2 style="text-align:center;color:white;font-size:22px;font-weight:700;margin:0 0 2px 0;">Compliance Monitor</h2>', unsafe_allow_html=True)
-    st.markdown('<p style="text-align:center;color:rgba(255,255,255,0.5);margin:0 0 14px 0;font-size:13px;">Sofgen Pharma · Ingresa tus credenciales</p>', unsafe_allow_html=True)
+    st.markdown('<h2 style="text-align:center;color:white;font-size:22px;font-weight:700;margin:0 0 2px 0;letter-spacing:0.5px;">COMPLIANCE MONITOR</h2>', unsafe_allow_html=True)
+    st.markdown('<p style="text-align:center;color:#00B5B0;margin:0 0 16px 0;font-size:12px;font-weight:600;letter-spacing:2px;">— SCHEDULE —</p>', unsafe_allow_html=True)
 
     with st.form("login_form"):
         email    = st.text_input("Correo electrónico", placeholder="usuario@sofgen.com")
