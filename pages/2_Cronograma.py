@@ -1,21 +1,13 @@
 import streamlit as st
 
-st.set_page_config(
-    page_title="Cronograma · Compliance Monitor",
-    page_icon="📋",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
 
-from app.auth import require_auth, is_admin
+from app.auth import is_admin
 from app.styles import inject_global_css
-from app.components import render_sidebar, render_page_header
+from app.components import render_page_header
 from app.database import get_activities, get_project_config, update_activity_status, get_activity_log
 from app.models import STATUSES, RESPONSABLES
 
-require_auth()
 inject_global_css()
-render_sidebar()
 
 @st.cache_data(ttl=30)
 def get_all_observations(scenario: str) -> dict:
