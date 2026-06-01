@@ -13,7 +13,12 @@ SIDEBAR_CSS = """
 section[data-testid="stSidebar"] {
     background-color: #003A70 !important;
 }
-[data-testid="stSidebarNav"] { display: none !important; }
+/* Navegación de st.navigation — visible y estilizada */
+[data-testid="stSidebarNav"] a span { color: rgba(255,255,255,0.85) !important; }
+[data-testid="stSidebarNav"] a:hover { background-color: rgba(255,255,255,0.08) !important; }
+[data-testid="stSidebarNav"] li div a[aria-current="page"] {
+    background-color: rgba(0,181,176,0.25) !important;
+}
 
 /* Texto sidebar */
 [data-testid="stSidebar"] p,
