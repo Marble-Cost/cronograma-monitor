@@ -1,26 +1,33 @@
 import streamlit as st
 from datetime import date
 
+st.set_page_config(
+    page_title="Dashboard · Compliance Monitor",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
+from app.auth import require_auth, is_admin
 from app.styles import inject_global_css
-from app.components import render_page_header
-from app.database import get_kpis, get_phase_progress, get_project_config, get_recent_log
+from app.components import render_sidebar, render_page_header
+from app.database import get_kpis, get_phase_progress, get_project_config, get_recent_log, get_activities
 from app.utils import format_date_es, get_current_week, get_end_date, semaforo_fase
 import plotly.graph_objects as go
 
+require_auth()
 inject_global_css()
+render_sidebar()
 
-config         = get_project_config()
-start_date     = config.start_date
-end_date       = get_end_date(start_date)
-current_week   = get_current_week(start_date)
+config       = get_project_config()
+start_date   = config.start_date
+end_date     = get_end_date(start_date)
+current_week = get_current_week(start_date)
 
-# ── Selector de escenario ─────────────────────────────────────
-sc1, sc2 = st.columns([2, 5])
+sc1, _ = st.columns([2, 5])
 with sc1:
     scenario = st.radio("Escenario", ["Supabase", "SQL Server"],
-                        index=0 if config.scenario == "Supabase" else 1,
-                        horizontal=True)
+                        index=0 if config.scenario == "Supabase" else 1, horizontal=True)
 
 kpi            = get_kpis(scenario)
 phase_progress = get_phase_progress(scenario)
@@ -28,14 +35,13 @@ phase_progress = get_phase_progress(scenario)
 render_page_header("📊 Dashboard",
     f"Progreso en tiempo real · {scenario} · {format_date_es(start_date)} → {format_date_es(end_date)}")
 
-# ── Indicador de salud del proyecto ──────────────────────────
+# ── Indicador de salud ────────────────────────────────────────
 if start_date and current_week:
-    # Calcular progreso esperado vs real
     expected_pct = round((current_week / 12) * 100)
     real_pct     = kpi.pct_completed
     diff         = real_pct - expected_pct
 
-    if real_pct == 100:
+    if real_pct >= 100:
         salud_icon, salud_label, salud_color = "🏆", "PROYECTO COMPLETADO", "#16A34A"
     elif diff >= 0:
         salud_icon, salud_label, salud_color = "🟢", "EN TIEMPO", "#16A34A"
@@ -57,32 +63,32 @@ if start_date and current_week:
             </span>
         </div>
         <div style="font-size:13px;color:#64748B;">
-            Avance esperado: <strong>{expected_pct}%</strong> · 
-            Avance real: <strong style="color:{salud_color};">{real_pct:.0f}%</strong> · 
+            Avance esperado: <strong>{expected_pct}%</strong> ·
+            Avance real: <strong style="color:{salud_color};">{real_pct:.0f}%</strong> ·
             Diferencia: <strong style="color:{salud_color};">{'+' if diff>=0 else ''}{diff:.0f}%</strong>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # Actividades atrasadas
-    all_acts = __import__('app.database', fromlist=['get_activities']).get_activities(scenario)
+    all_acts  = get_activities(scenario)
     atrasadas = [a for a in all_acts
                  if a.status == "PENDIENTE" and a.week_start <= current_week]
     if atrasadas:
         with st.expander(f"⚠️ {len(atrasadas)} actividad(es) deberían haber iniciado ya", expanded=True):
             for a in atrasadas:
                 st.markdown(f"- **#{a.activity_number}** {a.activity_name} · _{a.responsable}_ · debió iniciar en S{a.week_start}")
-
-elif not start_date:
+else:
     st.info("💡 Define la **fecha de inicio** en ⚙️ Configuración para activar el indicador de salud del proyecto.")
+    atrasadas = []
+
+st.markdown("---")
 
 # ── KPIs ──────────────────────────────────────────────────────
-st.markdown("---")
 c1, c2, c3, c4 = st.columns(4, gap="medium")
-c1.metric("⚪ Pendientes",    kpi.pending,      "actividades sin iniciar")
-c2.metric("🟡 En Progreso",   kpi.in_progress,  "actividades activas")
-c3.metric("✅ Completadas",   kpi.completed,    "actividades finalizadas")
-c4.metric("📈 % Completado",  f"{kpi.pct_completed:.0f}%", f"de {kpi.total} totales")
+c1.metric("⚪ Pendientes",   kpi.pending,     "actividades sin iniciar")
+c2.metric("🟡 En Progreso",  kpi.in_progress, "actividades activas")
+c3.metric("✅ Completadas",  kpi.completed,   "actividades finalizadas")
+c4.metric("📈 % Completado", f"{kpi.pct_completed:.0f}%", f"de {kpi.total} totales")
 
 st.markdown("---")
 
@@ -146,20 +152,17 @@ st.subheader("📰 Últimas novedades del proyecto")
 st.caption("Los cambios más recientes registrados por cualquier usuario del sistema.")
 logs = get_recent_log(8)
 if not logs:
-    st.info("Aún no hay cambios registrados. Los cambios aparecerán aquí cuando el admin actualice actividades.")
+    st.info("Aún no hay cambios registrados.")
 else:
     for log in logs:
-        act_name   = "—"
-        if log.get("activities"):
-            act_name = log["activities"].get("activity_name", "—")[:55]
+        act_name   = log["activities"].get("activity_name", "—")[:55] if log.get("activities") else "—"
         changed_at = log.get("changed_at", "")[:16].replace("T", " ")
         user_email = log.get("user_email", "—")
         old_s      = log.get("old_status", "—")
         new_s      = log.get("new_status", "—")
-        obs        = log.get("observation", "")
+        obs        = log.get("observation", "") or ""
         icon_new   = {"PENDIENTE": "⚪", "EN PROGRESO": "🟡", "COMPLETADO": "✅"}.get(new_s, "•")
-
-        obs_html = f"<br><span style='font-style:italic;color:#64748B;'>💬 {obs[:80]}</span>" if obs else ""
+        obs_html   = f"<br><span style='font-style:italic;color:#64748B;'>💬 {obs[:80]}</span>" if obs else ""
         st.markdown(f"""
         <div style="padding:10px 0;border-bottom:1px solid #F1F5F9;">
             <span style="font-size:11px;color:#94A3B8;">{changed_at}</span>
@@ -170,60 +173,57 @@ else:
         """, unsafe_allow_html=True)
 
 # ── Exportar (solo admin) ─────────────────────────────────────
-from app.auth import is_admin
 if is_admin():
     st.markdown("---")
     st.subheader("📤 Exportar Informe")
-    st.caption("Genera un archivo con el estado actual del proyecto para trabajar fuera de la app.")
+    st.caption("Genera un archivo con el estado actual del proyecto. Solo disponible para administradores.")
 
     exp1, exp2 = st.columns(2, gap="medium")
 
     with exp1:
         st.markdown("##### 📊 Excel Profesional")
-        st.markdown("Versión editable del cronograma con Gantt de barras, fórmulas automáticas e historial de observaciones.")
+        st.markdown("Cronograma editable con Gantt de barras, fórmulas automáticas e historial de observaciones.")
         if st.button("⬇️ Descargar Excel", use_container_width=True, key="btn_excel"):
             with st.spinner("Generando Excel..."):
                 try:
                     from app.database import get_full_log
                     from app.export_excel import generate_excel
-                    acts_exp  = __import__('app.database', fromlist=['get_activities']).get_activities(scenario)
-                    kpis_exp  = __import__('app.database', fromlist=['get_kpis']).get_kpis(scenario)
-                    ph_exp    = __import__('app.database', fromlist=['get_phase_progress']).get_phase_progress(scenario)
-                    logs_exp  = get_full_log(300)
-                    cfg_exp   = get_project_config()
-                    excel_bytes = generate_excel(acts_exp, logs_exp, kpis_exp, ph_exp, cfg_exp, scenario)
+                    acts_exp    = get_activities(scenario)
+                    kpis_exp    = get_kpis(scenario)
+                    ph_exp      = get_phase_progress(scenario)
+                    logs_exp    = get_full_log(300)
+                    excel_bytes = generate_excel(acts_exp, logs_exp, kpis_exp, ph_exp, config, scenario)
                     st.download_button(
-                        label="📥 Haz clic aquí para guardar",
+                        label="📥 Haz clic aquí para guardar el archivo",
                         data=excel_bytes,
                         file_name=f"ComplianceMonitor_{scenario.replace(' ','_')}_{date.today()}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True,
+                        use_container_width=True, key="dl_excel",
                     )
                 except Exception as e:
                     st.error(f"Error al generar Excel: {e}")
 
     with exp2:
         st.markdown("##### 📄 PDF Ejecutivo")
-        st.markdown("Informe ejecutivo listo para imprimir o enviar: salud del proyecto, KPIs, avance por fase y alertas.")
+        st.markdown("Informe listo para imprimir o enviar: semáforo de salud, KPIs, fases y alertas.")
         if st.button("⬇️ Descargar PDF", use_container_width=True, key="btn_pdf"):
             with st.spinner("Generando PDF..."):
                 try:
                     from app.export_pdf import generate_pdf
-                    acts_exp  = __import__('app.database', fromlist=['get_activities']).get_activities(scenario)
-                    kpis_exp  = __import__('app.database', fromlist=['get_kpis']).get_kpis(scenario)
-                    ph_exp    = __import__('app.database', fromlist=['get_phase_progress']).get_phase_progress(scenario)
+                    acts_exp  = get_activities(scenario)
+                    kpis_exp  = get_kpis(scenario)
+                    ph_exp    = get_phase_progress(scenario)
                     logs_exp  = get_recent_log(50)
-                    cfg_exp   = get_project_config()
-                    atrasadas = [a for a in acts_exp
-                                 if a.status == "PENDIENTE" and start_date and current_week
-                                 and a.week_start <= current_week]
-                    pdf_bytes = generate_pdf(acts_exp, logs_exp, kpis_exp, ph_exp, cfg_exp, scenario, atrasadas)
+                    atr_exp   = [a for a in acts_exp
+                                 if a.status == "PENDIENTE" and start_date
+                                 and current_week and a.week_start <= current_week]
+                    pdf_bytes = generate_pdf(acts_exp, logs_exp, kpis_exp, ph_exp, config, scenario, atr_exp)
                     st.download_button(
-                        label="📥 Haz clic aquí para guardar",
+                        label="📥 Haz clic aquí para guardar el archivo",
                         data=pdf_bytes,
                         file_name=f"ComplianceMonitor_{scenario.replace(' ','_')}_{date.today()}.pdf",
                         mime="application/pdf",
-                        use_container_width=True,
+                        use_container_width=True, key="dl_pdf",
                     )
                 except Exception as e:
                     st.error(f"Error al generar PDF: {e}")
