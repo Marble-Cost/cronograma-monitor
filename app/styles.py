@@ -13,6 +13,7 @@ SIDEBAR_CSS = """
 section[data-testid="stSidebar"] {
     background-color: #003A70 !important;
 }
+/* Ocultar navegación automática de Streamlit — usamos st.page_link() manual */
 [data-testid="stSidebarNav"] { display: none !important; }
 
 /* Texto sidebar */
