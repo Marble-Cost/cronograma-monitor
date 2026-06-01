@@ -22,7 +22,11 @@ def login_user(email: str, password: str) -> tuple[bool, str | None]:
         client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_ANON_KEY"])
         res = client.auth.sign_in_with_password({"email": email, "password": password})
         if res.user and res.session:
-            _store_session(res.user, res.session)
+            st.session_state["sb_access_token"]  = res.session.access_token
+            st.session_state["sb_refresh_token"] = res.session.refresh_token
+            st.session_state["sb_user_email"]    = res.user.email
+            st.session_state["sb_user_id"]       = str(res.user.id)
+            _load_profile(client, str(res.user.id))
             return True, None
         return False, "Credenciales inválidas"
     except Exception as e:
@@ -30,22 +34,6 @@ def login_user(email: str, password: str) -> tuple[bool, str | None]:
         if "Invalid login" in msg or "invalid_credentials" in msg:
             return False, "Correo o contraseña incorrectos"
         return False, msg
-
-
-def restore_session_from_token(refresh_token: str) -> bool:
-    """
-    Intenta restaurar la sesión usando el refresh_token guardado en el navegador.
-    Devuelve True si logra restaurarla, False si el token expiró.
-    """
-    try:
-        client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_ANON_KEY"])
-        res = client.auth.refresh_session(refresh_token)
-        if res.user and res.session:
-            _store_session(res.user, res.session)
-            return True
-    except Exception:
-        pass
-    return False
 
 
 def logout_user():
@@ -79,13 +67,23 @@ def is_authenticated() -> bool:
 
 
 def require_auth():
-    """Protege cada página. Si no hay sesión, redirige al login limpiamente."""
+    """
+    Protege cada página. Si no hay sesión activa, muestra un mensaje
+    y redirige al login de forma segura — sin disparar el error
+    'SessionInfo not initialized'.
+    """
     if not is_authenticated():
-        try:
-            st.switch_page("main.py")
-        except Exception:
-            st.warning("⚠️ Tu sesión ha expirado. Por favor recarga la página para volver a ingresar.")
-            st.stop()
+        # Renderizar algo primero para que Streamlit inicialice
+        # la sesión antes de intentar cambiar de página
+        st.markdown(
+            '<div style="display:flex;align-items:center;justify-content:center;'
+            'height:80vh;flex-direction:column;gap:16px;">'
+            '<div style="font-size:32px;">🔐</div>'
+            '<div style="color:#64748B;font-size:14px;">Sesión no activa. Redirigiendo...</div>'
+            '</div>',
+            unsafe_allow_html=True
+        )
+        st.switch_page("main.py")
         st.stop()
 
 
@@ -109,17 +107,6 @@ def get_current_user_role() -> str:
 
 def is_admin() -> bool:
     return get_current_user_role() == "admin"
-
-
-# ── Internos ──────────────────────────────────────────────────
-
-def _store_session(user, session):
-    st.session_state["sb_access_token"]  = session.access_token
-    st.session_state["sb_refresh_token"] = session.refresh_token
-    st.session_state["sb_user_email"]    = user.email
-    st.session_state["sb_user_id"]       = str(user.id)
-    client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_ANON_KEY"])
-    _load_profile(client, str(user.id))
 
 
 def _load_profile(client: Client, user_id: str):
