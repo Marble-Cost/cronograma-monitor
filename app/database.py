@@ -238,3 +238,16 @@ def create_user_as_admin(email: str, password: str, full_name: str, role: str) -
         return False, "No se pudo crear el usuario"
     except Exception as e:
         return False, str(e)
+
+
+def get_full_log(limit: int = 500) -> list:
+    """Obtiene el historial completo para exportar (Excel/PDF)."""
+    try:
+        client = get_supabase_client()
+        res = (client.table("activity_log")
+               .select("*, activities(activity_name)")
+               .order("changed_at", desc=True)
+               .limit(limit).execute())
+        return res.data or []
+    except Exception:
+        return []
