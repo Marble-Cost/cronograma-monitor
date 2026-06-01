@@ -130,3 +130,7 @@ class KPIData:
         if self.total == 0:
             return 0.0
         return round(self.in_progress / self.total * 100, 1)
+
+# Cada actividad depende de la anterior (cadena lineal 1->2->3->...->25)
+ACTIVITY_DEPENDENCIES = {n: n-1 for n in range(2, 26)}
+# {2:1, 3:2, ..., 25:24} — actividad N no puede iniciar si N-1 no está COMPLETADO
