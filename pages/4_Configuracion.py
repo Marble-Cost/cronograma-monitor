@@ -1,16 +1,10 @@
 import streamlit as st
 from datetime import date
 
-st.set_page_config(
-    page_title="Configuración · Compliance Monitor",
-    page_icon="⚙️",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
 
-from app.auth import require_auth, get_current_user_id, get_current_user_role, is_admin, update_password
+from app.auth import get_current_user_id, get_current_user_role, is_admin, update_password
 from app.styles import inject_global_css
-from app.components import render_sidebar, render_page_header
+from app.components import render_page_header
 from app.database import (
     get_project_config, save_project_config,
     get_profile, update_profile_name,
@@ -20,9 +14,7 @@ from app.database import (
 from app.models import SCENARIOS
 from app.utils import format_date_es, get_end_date, get_current_week
 
-require_auth()
 inject_global_css()
-render_sidebar()
 
 user_id = get_current_user_id()
 role    = get_current_user_role()
