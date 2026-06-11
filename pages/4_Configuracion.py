@@ -52,9 +52,8 @@ with tabs[0]:
             disabled=not is_admin(), format="YYYY-MM-DD",
             help="Todas las fechas del Gantt se calculan desde este día.")
     with cc2:
-        idx = SCENARIOS.index(config.scenario) if config.scenario in SCENARIOS else 0
-        new_scenario = st.radio("🖥️ Escenario activo por defecto", SCENARIOS, index=idx,
-            disabled=not is_admin())
+        new_scenario = "Compliance Monitor"
+        st.info("🖥️ Escenario activo: **Compliance Monitor**")
 
     if new_date and isinstance(new_date, date):
         end_date     = get_end_date(new_date)
