@@ -1,13 +1,21 @@
 import streamlit as st
 
+st.set_page_config(
+    page_title="Cronograma · Compliance Monitor",
+    page_icon="📋",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
-from app.auth import is_admin
+from app.auth import require_auth, is_admin
 from app.styles import inject_global_css
-from app.components import render_page_header
+from app.components import render_sidebar, render_page_header
 from app.database import get_activities, get_project_config, update_activity_status, get_activity_log
 from app.models import STATUSES, RESPONSABLES, ACTIVITY_DEPENDENCIES
 
+require_auth()
 inject_global_css()
+render_sidebar()
 
 @st.cache_data(ttl=30)
 def get_all_observations(scenario: str) -> dict:
@@ -28,8 +36,10 @@ def get_all_observations(scenario: str) -> dict:
     except Exception:
         return {}
 
-config = get_project_config()
-render_page_header("📋 Cronograma", "Gestión de actividades · Selecciona el escenario a visualizar")
+config   = get_project_config()
+scenario = config.scenario  # Compliance Monitor
+
+render_page_header("📋 Cronograma", "Gestión de actividades · Compliance Monitor")
 
 with st.expander("📖 Guía de uso", expanded=False):
     st.markdown("""
@@ -41,21 +51,16 @@ with st.expander("📖 Guía de uso", expanded=False):
     - **↩ Reabrir** — Devuelve a EN PROGRESO si fue marcada por error
     - **📋 Historial** — Muestra todo el registro de cambios de esa actividad
 
-    **Observaciones:** Al hacer clic en cualquier botón de acción, se abre un panel donde puedes dejar
-    una nota describiendo qué ocurrió. Esa nota queda guardada permanentemente y es visible en la tabla.
+    **Dependencias:** Una actividad no puede iniciarse hasta que la anterior esté completada.
 
     **Responsables:** 👨‍💻 Desarrollador · 🖥️ TI · 🤝 Ambos · 👔 Liderazgo
     """)
 
 st.markdown("---")
 
-scenario = config.scenario  # Compliance Monitor
-
-st.markdown("---")
-
 fc1, fc2, fc3, fc4 = st.columns(4, gap="medium")
 with fc1:
-    sel_fase = st.selectbox("Fase", ["Todas las fases","FASE 0","FASE 1","FASE 2","FASE 3","FASE 4"])
+    sel_fase = st.selectbox("Fase", ["Todas las fases","FASE 0","FASE 1","FASE 2","FASE 3","FASE 4","FASE 5"])
 with fc2:
     sel_resp = st.selectbox("Responsable", ["Todos"] + RESPONSABLES)
 with fc3:
@@ -65,8 +70,7 @@ with fc4:
 
 all_activities = get_activities(scenario)
 observations   = get_all_observations(scenario)
-# Mapa rapido numero_actividad -> estado para verificar dependencias
-status_map = {a.activity_number: a.status for a in all_activities}
+status_map     = {a.activity_number: a.status for a in all_activities}
 
 activities = all_activities
 if sel_fase != "Todas las fases":
@@ -93,7 +97,6 @@ if not activities:
     st.info("No hay actividades que coincidan con los filtros.")
     st.stop()
 
-# ── Estado de sesión ──────────────────────────────────────────
 if "accion_pendiente" not in st.session_state:
     st.session_state.accion_pendiente = None
 if "ver_historial" not in st.session_state:
@@ -106,7 +109,6 @@ if st.session_state.accion_pendiente:
     icono        = {"iniciar": "▶", "completar": "✅", "reabrir": "↩"}[ap["accion"]]
 
     st.info(f"{icono} **Confirmando** — #{ap['numero']} {ap['nombre'][:55]}  \n**{ap['estado_actual']}** → **{nuevo_estado}**")
-
     obs = st.text_area("📝 Observación (queda guardada permanentemente)",
         placeholder="Describe qué ocurrió, qué se entregó, o por qué se realiza este cambio...",
         height=80, key="obs_input")
@@ -129,7 +131,7 @@ if st.session_state.accion_pendiente:
 # ── Panel de historial ────────────────────────────────────────
 if st.session_state.ver_historial:
     vh = st.session_state.ver_historial
-    st.markdown(f"#### 📋 Historial completo — #{vh['numero']} {vh['nombre'][:60]}")
+    st.markdown(f"#### 📋 Historial — #{vh['numero']} {vh['nombre'][:60]}")
     logs = get_activity_log(vh["id"])
     if not logs:
         st.info("Esta actividad no tiene cambios registrados todavía.")
@@ -139,7 +141,7 @@ if st.session_state.ver_historial:
             user_email = log.get("user_email", "—")
             old_s      = log.get("old_status", "—")
             new_s      = log.get("new_status", "—")
-            obs        = log.get("observation", "")
+            obs        = log.get("observation", "") or ""
             icon_new   = {"PENDIENTE": "⚪", "EN PROGRESO": "🟡", "COMPLETADO": "✅"}.get(new_s, "•")
             obs_html   = f"<br><em style='color:#64748B;'>💬 {obs}</em>" if obs else ""
             st.markdown(f"""
@@ -189,7 +191,6 @@ for fase_num in sorted(set(a.fase_number for a in activities)):
 
         with c6:
             if is_admin():
-                # Verificar dependencia: la actividad anterior debe estar COMPLETADA
                 pred_num    = ACTIVITY_DEPENDENCIES.get(act.activity_number)
                 pred_status = status_map.get(pred_num, "COMPLETADO") if pred_num else "COMPLETADO"
                 pred_ok     = (pred_status == "COMPLETADO")
@@ -201,11 +202,7 @@ for fase_num in sorted(set(a.fase_number for a in activities)):
                             st.session_state.ver_historial = None
                             st.rerun()
                     else:
-                        st.markdown(
-                            f"<div style='padding-top:6px;font-size:10px;color:#D97706;'"
-                            f">🔒 Completa #{pred_num} primero</div>",
-                            unsafe_allow_html=True
-                        )
+                        st.markdown(f"<div style='padding-top:6px;font-size:10px;color:#D97706;'>🔒 Completa #{pred_num} primero</div>", unsafe_allow_html=True)
                 elif act.status == "EN PROGRESO":
                     if st.button("✅ Completar", key=f"comp_{act.id}", use_container_width=True):
                         st.session_state.accion_pendiente = {"id": act.id, "accion": "completar", "estado_actual": act.status, "nombre": act.activity_name, "numero": act.activity_number}
