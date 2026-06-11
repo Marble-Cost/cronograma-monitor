@@ -44,10 +44,8 @@ with st.expander("📖 Guía de lectura", expanded=False):
 
 st.markdown("---")
 
-gc1, gc2, gc3, gc4 = st.columns([1, 1, 1, 1], gap="medium")
-with gc1:
-    scenario = st.radio("Escenario", ["Supabase", "SQL Server"],
-                        index=0 if config.scenario == "Supabase" else 1, horizontal=True)
+gc2, gc3, gc4 = st.columns([1, 1, 1], gap="medium")
+scenario = config.scenario  # Compliance Monitor
 with gc2:
     color_mode = st.radio("Colorear por", ["Estado", "Responsable"], horizontal=True)
 with gc3:
